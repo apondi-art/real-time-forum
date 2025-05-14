@@ -1,29 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Forum</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="login-container">
-        <h1>Login</h1>
-        <form>
-            <div class="form-group">
-                <label for="username">Nickname or Email</label>
-                <input type="text" id="username" name="username" required>
-            </div>
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required>
-            </div>
-            <button type="submit">Login</button>
-            <div id="errorMessage" class="error-mesage" style="display: none;"></div>
-        </form>
-        <div class="links">
-            <a href="/register">Create account</a>
-        </div>
+    <div id="app">
+        <!-- Everything will be injected here by JS -->
     </div>
-    
+    <script src="script.js"></script>
 </body>
 </html>
