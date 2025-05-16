@@ -1,0 +1,51 @@
+/* styles.css */
+.main-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+}
+
+.sections-container {
+    display: flex;
+    flex: 1;
+    gap: 20px;
+    padding: 20px;
+}
+
+.forum-section {
+    flex: 1;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    overflow-y: auto; /* Enable scrolling for long lists */
+}
+
+#categories-section {
+    flex: 0.5; /* Smaller width */
+}
+
+#posts-section {
+    flex: 2; /* Wider than others */
+}
+
+#users-section {
+    flex: 0.8;
+}
+
+/* Header styling */
+header {
+    background: #333;
+    color: white;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+#logout-btn {
+    background: #ff4444;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+}
