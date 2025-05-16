@@ -31,3 +31,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusOK)
     w.Write([]byte("Login endpoint"))
 }
+
+func (h *Handler) Home(w http.ResponseWriter, r *http.Request) {
+    // TODO: Implement login logic
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte("Login endpoint"))
+}

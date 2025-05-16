@@ -41,6 +41,7 @@ func main() {
 	// Define your API routes
 	http.HandleFunc("/api/register", handler.Register)
 	http.HandleFunc("/api/login", handler.Login)
+	http.HandleFunc("api/home", handler.Home)
 
 	// Start the server
 	port := "8080" // Choose a port
