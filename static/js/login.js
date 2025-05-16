@@ -50,15 +50,25 @@ function renderLoginPage() {
     `;
 }
 
-function handleLogin() {
-    const username = document.getElementById('username').value;
-    const password = document.getElementById('password').value;
+// Fixed frontend login function
 
-    if (!username || !password) {
-        showError('Please fill in all fields');
+function handleLogin() {
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    
+    // Add more client-side validation
+    if (!username) {
+        showError('Please enter a username or email');
         return;
     }
-
+    
+    if (!password) {
+        showError('Please enter your password');
+        return;
+    }
+    
+    console.log("Sending login request for username:", username);
+    
     // Login API call
     fetch('/api/login', {
         method: 'POST',
@@ -66,28 +76,36 @@ function handleLogin() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            identifier: username, // Nickname or email
+            identifier: username, // Keep the field name as the backend expects it now
             password: password
         })
     })
     .then(response => {
-        if (!response.ok) {
-            return response.json().then(data => {
-                throw new Error(data.message || 'Login failed');
-            });
-        }
-        return response.json();
+        console.log("Login response status:", response.status);
+        
+        // Parse JSON response regardless of status code
+        return response.json().then(data => {
+            if (!response.ok) {
+                // Add more detail to the error
+                console.error("Login error:", data);
+                throw new Error(data.message || `Login failed (${response.status})`);
+            }
+            return data;
+        });
     })
     .then(data => {
+        console.log("Login successful, received data:", data);
+        
         // Store token in localStorage
         localStorage.setItem('forum_token', data.token);
-        localStorage.setItem('user_id', data.userId);
-        localStorage.setItem('username', data.username);
-
+        localStorage.setItem('user_id', data.user.ID || data.userId);
+        localStorage.setItem('username', data.user.Nickname || data.username);
+        
         // Load main application
         loadMainApplication();
     })
     .catch(error => {
+        console.error("Login error details:", error);
         showError(error.message || 'Login failed. Please try again.');
     });
 }
