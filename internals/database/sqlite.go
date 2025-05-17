@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -17,6 +18,11 @@ var schemaFS embed.FS
 
 type Database struct {
 	DB *sql.DB
+}
+type User struct {
+    ID       int
+    Nickname string
+    Email    string
 }
 
 // Initialize the database connection and schema
@@ -101,20 +107,76 @@ func PasswordHashing(pasword string) (string, error) {
 	return string(bytes), nil
 }
 
-func (d *Database) AuthenticateUser(nickname, email, password string) error {
-	var hashedPassword string
+// Fixed AuthenticateUser function with additional safeguards and debugging
 
-	// Fetch password hash from database
-	err := d.DB.QueryRow("SELECT password FROM users WHERE nickname = ? or email = ? ", nickname, email).Scan(&hashedPassword)
-	if err != nil {
-		return err // User not found
-	}
+func (d *Database) AuthenticateUser(nickname, email, password string) (*User, error) {
+    // Debugging info
+    fmt.Printf("AuthenticateUser called with: nickname='%s', email='%s', password_length=%d\n", 
+        nickname, email, len(password))
 
-	// Compare stored hashed password with the provided password
-	err = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
-	if err != nil {
-		return err // Incorrect password
-	}
+    // Check if we have at least some credentials
+    if nickname == "" && email == "" {
+        return nil, fmt.Errorf("no credentials provided")
+    }
 
-	return nil
+    // Check if password is provided
+    if password == "" {
+        return nil, fmt.Errorf("password required")
+    }
+
+    // Define a struct to hold user data from database
+    var user struct {
+        ID       int
+        Nickname string
+        Email    string
+        Password string
+    }
+    
+    // Build the query based on provided credentials
+    query := `SELECT id, nickname, email, password FROM users WHERE `
+    var conditions []string
+    var queryParams []interface{}
+    
+    if nickname != "" {
+        conditions = append(conditions, "nickname = ?")
+        queryParams = append(queryParams, nickname)
+    }
+    
+    if email != "" {
+        conditions = append(conditions, "email = ?")
+        queryParams = append(queryParams, email)
+    }
+    
+    query += strings.Join(conditions, " OR ")
+    
+    fmt.Printf("Executing SQL query: %s with params: %v\n", query, queryParams)
+    
+    // Fetch user data from database
+    err := d.DB.QueryRow(query, queryParams...).Scan(&user.ID, &user.Nickname, &user.Email, &user.Password)
+    if err != nil {
+        if err == sql.ErrNoRows {
+            fmt.Println("DB query result: No user found")
+            return nil, fmt.Errorf("user not found")
+        }
+        fmt.Printf("DB query error: %v\n", err)
+        return nil, fmt.Errorf("database error: %w", err)
+    }
+    
+    fmt.Printf("User found in DB: ID=%d, Nickname=%s, Email=%s\n", user.ID, user.Nickname, user.Email)
+    
+    // Compare stored hashed password with provided password
+    err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+    if err != nil {
+        fmt.Println("Password comparison failed")
+        return nil, fmt.Errorf("invalid password")
+    }
+    
+    fmt.Println("Password validation successful")
+    
+    // Return user data without the password for security
+    return &User{
+        ID:       user.ID,
+        Nickname: user.Nickname,
+        Email:    user.Email,
+    }, nil
 }
