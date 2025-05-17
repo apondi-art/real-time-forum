@@ -38,10 +38,21 @@ type LoginUser struct {
 }
 
 type AuthResponse struct {
-	Success bool        `json:"success"`
-	Message string      `json:"message"`
-	Token   string      `json:"token,omitempty"`
+	Success bool           `json:"success"`
+	Message string         `json:"message"`
+	Token   string         `json:"token,omitempty"`
 	User    *database.User `json:"user,omitempty"`
+}
+
+type NewPostRequest struct {
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+type PostResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+	PostID  int    `json:"postId,omitempty"`
 }
 
 // JWT secret key (in production, use environment variable)
@@ -267,3 +278,119 @@ func sendAuthResponse(w http.ResponseWriter, success bool, message string, statu
 
 	json.NewEncoder(w).Encode(response)
 }
+
+func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Verify JWT token to get user ID
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	// Remove "Bearer " prefix if present
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	claims, err := h.VerifyJWTToken(tokenString)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := int(claims.UserID)
+
+	var newPost NewPostRequest
+	if err := json.NewDecoder(r.Body).Decode(&newPost); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	// Validate input
+	if newPost.Title == "" || newPost.Content == "" {
+		http.Error(w, "Title and content are required", http.StatusBadRequest)
+		return
+	}
+
+	// Create the post in the database
+	err = h.DB.CreatePost(userID, newPost.Title, newPost.Content)
+	if err != nil {
+		log.Printf("Error creating post: %v", err)
+		http.Error(w, "Failed to create post", http.StatusInternalServerError)
+		return
+	}
+
+	// Respond with success
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(PostResponse{Success: true, Message: "Post created successfully"})
+}
+
+type LogoutResponse struct {
+	Success bool   `json:"success"`
+	Message string `json:"message"`
+}
+
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(LogoutResponse{Success: true, Message: "Logged out successfully"})
+}
+
+// Go code for GetPosts handler - add this to your handlers.go file
+
+// Post represents a forum post
+type Post struct {
+    ID        int       `json:"id"`
+    Title     string    `json:"title"`
+    Content   string    `json:"content"`
+    AuthorID  int       `json:"authorId"`
+    Author    string    `json:"author"`
+    CreatedAt time.Time `json:"createdAt"`
+}
+
+// GetPosts handles retrieving all posts
+func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    // Retrieve posts from database
+    posts, err := h.DB.GetAllPosts()
+    if err != nil {
+        log.Printf("Error retrieving posts: %v", err)
+        http.Error(w, "Failed to retrieve posts", http.StatusInternalServerError)
+        return
+    }
+
+    // --- Optional: Format Timestamp for JSON Response ---
+    type PostResponse struct {
+        ID        int    `json:"id"`
+        Title     string `json:"title"`
+        Content   string `json:"content"`
+        Author    string `json:"author"`
+        CreatedAt string `json:"createdAt"`
+    }
+
+    var responsePosts []PostResponse
+    for _, post := range posts {
+        responsePosts = append(responsePosts, PostResponse{
+            ID:        post.ID,
+            Title:     post.Title,
+            Content:   post.Content,
+            Author:    post.Author,
+            CreatedAt: post.CreatedAt.Format(time.RFC3339),
+        })
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(responsePosts)
+}
+
