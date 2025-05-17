@@ -20,9 +20,19 @@ type Database struct {
 	DB *sql.DB
 }
 type User struct {
-    ID       int
-    Nickname string
-    Email    string
+	ID       int
+	Nickname string
+	Email    string
+}
+
+type Post struct {
+	ID        int
+	UserID    int
+	Title     string
+	Content   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	Author    string // Added field to store the author's nickname
 }
 
 // Initialize the database connection and schema
@@ -110,73 +120,139 @@ func PasswordHashing(pasword string) (string, error) {
 // Fixed AuthenticateUser function with additional safeguards and debugging
 
 func (d *Database) AuthenticateUser(nickname, email, password string) (*User, error) {
-    // Debugging info
-    fmt.Printf("AuthenticateUser called with: nickname='%s', email='%s', password_length=%d\n", 
-        nickname, email, len(password))
+	// Debugging info
+	fmt.Printf("AuthenticateUser called with: nickname='%s', email='%s', password_length=%d\n",
+		nickname, email, len(password))
 
-    // Check if we have at least some credentials
-    if nickname == "" && email == "" {
-        return nil, fmt.Errorf("no credentials provided")
-    }
+	// Check if we have at least some credentials
+	if nickname == "" && email == "" {
+		return nil, fmt.Errorf("no credentials provided")
+	}
 
-    // Check if password is provided
-    if password == "" {
-        return nil, fmt.Errorf("password required")
-    }
+	// Check if password is provided
+	if password == "" {
+		return nil, fmt.Errorf("password required")
+	}
 
-    // Define a struct to hold user data from database
-    var user struct {
-        ID       int
-        Nickname string
-        Email    string
-        Password string
-    }
-    
-    // Build the query based on provided credentials
-    query := `SELECT id, nickname, email, password FROM users WHERE `
-    var conditions []string
-    var queryParams []interface{}
-    
-    if nickname != "" {
-        conditions = append(conditions, "nickname = ?")
-        queryParams = append(queryParams, nickname)
-    }
-    
-    if email != "" {
-        conditions = append(conditions, "email = ?")
-        queryParams = append(queryParams, email)
-    }
-    
-    query += strings.Join(conditions, " OR ")
-    
-    fmt.Printf("Executing SQL query: %s with params: %v\n", query, queryParams)
-    
-    // Fetch user data from database
-    err := d.DB.QueryRow(query, queryParams...).Scan(&user.ID, &user.Nickname, &user.Email, &user.Password)
-    if err != nil {
-        if err == sql.ErrNoRows {
-            fmt.Println("DB query result: No user found")
-            return nil, fmt.Errorf("user not found")
-        }
-        fmt.Printf("DB query error: %v\n", err)
-        return nil, fmt.Errorf("database error: %w", err)
-    }
-    
-    fmt.Printf("User found in DB: ID=%d, Nickname=%s, Email=%s\n", user.ID, user.Nickname, user.Email)
-    
-    // Compare stored hashed password with provided password
-    err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-    if err != nil {
-        fmt.Println("Password comparison failed")
-        return nil, fmt.Errorf("invalid password")
-    }
-    
-    fmt.Println("Password validation successful")
-    
-    // Return user data without the password for security
-    return &User{
-        ID:       user.ID,
-        Nickname: user.Nickname,
-        Email:    user.Email,
-    }, nil
+	// Define a struct to hold user data from database
+	var user struct {
+		ID       int
+		Nickname string
+		Email    string
+		Password string
+	}
+
+	// Build the query based on provided credentials
+	query := `SELECT id, nickname, email, password FROM users WHERE `
+	var conditions []string
+	var queryParams []interface{}
+
+	if nickname != "" {
+		conditions = append(conditions, "nickname = ?")
+		queryParams = append(queryParams, nickname)
+	}
+
+	if email != "" {
+		conditions = append(conditions, "email = ?")
+		queryParams = append(queryParams, email)
+	}
+
+	query += strings.Join(conditions, " OR ")
+
+	fmt.Printf("Executing SQL query: %s with params: %v\n", query, queryParams)
+
+	// Fetch user data from database
+	err := d.DB.QueryRow(query, queryParams...).Scan(&user.ID, &user.Nickname, &user.Email, &user.Password)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			fmt.Println("DB query result: No user found")
+			return nil, fmt.Errorf("user not found")
+		}
+		fmt.Printf("DB query error: %v\n", err)
+		return nil, fmt.Errorf("database error: %w", err)
+	}
+
+	fmt.Printf("User found in DB: ID=%d, Nickname=%s, Email=%s\n", user.ID, user.Nickname, user.Email)
+
+	// Compare stored hashed password with provided password
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if err != nil {
+		fmt.Println("Password comparison failed")
+		return nil, fmt.Errorf("invalid password")
+	}
+
+	fmt.Println("Password validation successful")
+
+	// Return user data without the password for security
+	return &User{
+		ID:       user.ID,
+		Nickname: user.Nickname,
+		Email:    user.Email,
+	}, nil
+}
+
+func (d *Database) CreatePost(userID int, title, content string) error {
+	_, err := d.DB.Exec(
+		"INSERT INTO posts (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+		userID, title, content, time.Now(), time.Now(),
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create post: %w", err)
+	}
+	return nil
+}
+
+func (db *Database) GetAllPosts() ([]Post, error) {
+	rows, err := db.DB.Query(`
+		SELECT p.id, p.title, p.content, p.user_id, u.nickname, p.created_at, p.updated_at
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		ORDER BY p.created_at DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query all posts: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []Post
+	for rows.Next() {
+		var post Post
+		var createdAtStr string
+		var updatedAtStr string
+		err := rows.Scan(
+			&post.ID,
+			&post.Title,
+			&post.Content,
+			&post.UserID,
+			&post.Author, // Scan the nickname into the Author field
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan post row: %w", err)
+		}
+
+		// Parse the timestamp strings into time.Time
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			log.Printf("failed to parse created_at timestamp: %v", err)
+			createdAt = time.Now() // Fallback to current time on parse error
+		}
+		post.CreatedAt = createdAt
+
+		updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
+		if err != nil {
+			log.Printf("failed to parse updated_at timestamp: %v", err)
+			updatedAt = time.Now() // Fallback to current time on parse error
+		}
+		post.UpdatedAt = updatedAt
+
+		posts = append(posts, post)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration: %w", err)
+	}
+
+	return posts, nil
 }

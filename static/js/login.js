@@ -1,4 +1,22 @@
 // login.js - Handles user authentication
+window.addEventListener('DOMContentLoaded', function() {
+    initializeApplication();
+});
+function initializeApplication() {
+    // Check if user is already logged in
+    const token = localStorage.getItem('forum_token');
+    if (token) {
+        // Redirect to main forum page
+        loadMainApplication();
+    } else {
+        // Show login page if no token exists
+        renderLoginPage();
+    }
+    
+    // Set up event delegation for all pages
+    setupEventHandlers();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Check if user is already logged in
     const token = localStorage.getItem('forum_token');

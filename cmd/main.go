@@ -42,6 +42,17 @@ func main() {
 	http.HandleFunc("/api/register", handler.Register)
 	http.HandleFunc("/api/login", handler.Login)
 	http.HandleFunc("api/home", handler.Home)
+	http.HandleFunc("/api/posts", func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodGet:
+			handler.GetPosts(w, r)
+		case http.MethodPost:
+			handler.CreatePost(w, r)
+		default:
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	http.HandleFunc("/api/logout", handler.Logout)
 
 	// Start the server
 	port := "8080" // Choose a port
