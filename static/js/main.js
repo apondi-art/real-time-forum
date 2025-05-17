@@ -24,9 +24,6 @@ function loadMainApplication() {
                 </form>
                 <div id="post-creation-message" class="message"></div>
             </section>
-
-         
-
             <div class="sections-container">
                 <section id="categories-section" class="forum-section">
                     <h2>Categories</h2>
