@@ -41,6 +41,7 @@ func main() {
 	// Define your API routes
 	http.HandleFunc("/api/register", handler.Register)
 	http.HandleFunc("/api/login", handler.Login)
+	http.HandleFunc("/api/categories", handler.GetCategories)
 	http.HandleFunc("api/home", handler.Home)
 	http.HandleFunc("/api/posts", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
@@ -53,6 +54,7 @@ func main() {
 		}
 	})
 	http.HandleFunc("/api/logout", handler.Logout)
+	
 
 	// Start the server
 	port := "8080" // Choose a port
