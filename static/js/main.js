@@ -1,4 +1,3 @@
-
 function loadMainApplication() {
     document.getElementById('app').innerHTML = `
         <div class="main-container">
@@ -6,8 +5,11 @@ function loadMainApplication() {
                 <h1>Forum</h1>
                 <button id="logout-btn">Logout</button>
             </header>
+               <section id="create-post-button-section" class="forum-section">
+                <button id="create-post-button">Create Post</button>
+            </section>
 
-            <section id="create-post-section" class="forum-section">
+            <section id="create-post-section" class="forum-section" style="display: none;">
                 <h2>Create New Post</h2>
                 <form id="new-post-form">
                     <div>
@@ -22,7 +24,6 @@ function loadMainApplication() {
                 </form>
                 <div id="post-creation-message" class="message"></div>
             </section>
-
             <div class="sections-container">
                 <section id="categories-section" class="forum-section">
                     <h2>Categories</h2>
@@ -49,7 +50,13 @@ function loadMainApplication() {
 
     // Add event listeners
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
+    document.getElementById('create-post-button').addEventListener('click', showCreatePostForm);
     document.getElementById('new-post-form').addEventListener('submit', handleCreatePost);
+}
+
+function showCreatePostForm() {
+    document.getElementById('create-post-section').style.display = 'block';
+    document.getElementById('create-post-button-section').style.display = 'none';
 }
 
 // Handle post creation
@@ -91,9 +98,10 @@ function handleCreatePost(event) {
             // Reset the form
             document.getElementById('new-post-form').reset();
             
-          
             setTimeout(() => {
                 loadPosts(); // Reload the posts
+                document.getElementById('create-post-section').style.display = 'none';
+                document.getElementById('create-post-button-section').style.display = 'block';
             }, 500);
         } else {
             messageDiv.textContent = `Failed to create post: ${data.message}`;
