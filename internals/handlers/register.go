@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -45,14 +46,23 @@ type AuthResponse struct {
 }
 
 type NewPostRequest struct {
-	Title   string `json:"title"`
-	Content string `json:"content"`
+	Title     string `json:"title"`
+	Content   string `json:"content"`
+	Category  string `json:"category"` // Added category field
 }
 
 type PostResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
 	PostID  int    `json:"postId,omitempty"`
+}
+
+// Category response types
+type CategoryResponse struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	PostCount   int    `json:"postCount"`
 }
 
 // JWT secret key (in production, use environment variable)
@@ -93,7 +103,6 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	// Register user
 	err = h.DB.RegisterUser(user.Nickname, user.Email, hashedPassword, user.LastName, user.FirstName, user.Gender, user.Age)
 	if err != nil {
-		log.Printf("Registration error: %v", err)
 		message := "Registration failed"
 		if err.Error() == "username or email already exists" {
 			message = err.Error()
@@ -279,6 +288,7 @@ func sendAuthResponse(w http.ResponseWriter, success bool, message string, statu
 	json.NewEncoder(w).Encode(response)
 }
 
+// Updated CreatePost handler with category support
 func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -313,8 +323,21 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create the post in the database
-	err = h.DB.CreatePost(userID, newPost.Title, newPost.Content)
+	if newPost.Category == "" {
+		http.Error(w, "Category is required", http.StatusBadRequest)
+		return
+	}
+
+	// Get category ID from category name
+	category, err := h.DB.GetCategoryByName(newPost.Category)
+	if err != nil {
+		log.Printf("Error finding category: %v", err)
+		http.Error(w, "Invalid category", http.StatusBadRequest)
+		return
+	}
+
+	// Create the post in the database with category ID
+	err = h.DB.CreatePost(userID, category.ID, newPost.Title, newPost.Content)
 	if err != nil {
 		log.Printf("Error creating post: %v", err)
 		http.Error(w, "Failed to create post", http.StatusInternalServerError)
@@ -326,6 +349,8 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(PostResponse{Success: true, Message: "Post created successfully"})
 }
+
+
 
 type LogoutResponse struct {
 	Success bool   `json:"success"`
@@ -346,51 +371,100 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 // Go code for GetPosts handler - add this to your handlers.go file
 
 // Post represents a forum post
+// Updated GetPosts handler with category information
 type Post struct {
-    ID        int       `json:"id"`
-    Title     string    `json:"title"`
-    Content   string    `json:"content"`
-    AuthorID  int       `json:"authorId"`
-    Author    string    `json:"author"`
-    CreatedAt time.Time `json:"createdAt"`
+	ID        int       `json:"id"`
+	Title     string    `json:"title"`
+	Content   string    `json:"content"`
+	Category  string    `json:"category"`
+	AuthorID  int       `json:"authorId"`
+	Author    string    `json:"author"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
-// GetPosts handles retrieving all posts
+// GetPosts handles retrieving all posts with category information
 func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    // Retrieve posts from database
-    posts, err := h.DB.GetAllPosts()
-    if err != nil {
-        log.Printf("Error retrieving posts: %v", err)
-        http.Error(w, "Failed to retrieve posts", http.StatusInternalServerError)
-        return
-    }
+	// Check for category filter in query params
+	categoryIDStr := r.URL.Query().Get("category")
+	var posts []database.Post
+	var err error
 
-    // --- Optional: Format Timestamp for JSON Response ---
-    type PostResponse struct {
-        ID        int    `json:"id"`
-        Title     string `json:"title"`
-        Content   string `json:"content"`
-        Author    string `json:"author"`
-        CreatedAt string `json:"createdAt"`
-    }
+	if categoryIDStr != "" {
+		// If category filter is provided, get posts for that category
+		categoryID, err := strconv.Atoi(categoryIDStr)
+		if err != nil {
+			http.Error(w, "Invalid category ID", http.StatusBadRequest)
+			return
+		}
+		posts, err = h.DB.GetPostsByCategory(categoryID)
+	} else {
+		// Otherwise get all posts
+		posts, err = h.DB.GetAllPosts()
+	}
 
-    var responsePosts []PostResponse
-    for _, post := range posts {
-        responsePosts = append(responsePosts, PostResponse{
-            ID:        post.ID,
-            Title:     post.Title,
-            Content:   post.Content,
-            Author:    post.Author,
-            CreatedAt: post.CreatedAt.Format(time.RFC3339),
-        })
-    }
+	if err != nil {
+		log.Printf("Error retrieving posts: %v", err)
+		http.Error(w, "Failed to retrieve posts", http.StatusInternalServerError)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(responsePosts)
+	// Format response
+	type PostResponse struct {
+		ID        int    `json:"id"`
+		Title     string `json:"title"`
+		Content   string `json:"content"`
+		Category  string `json:"category"`
+		Author    string `json:"author"`
+		CreatedAt string `json:"createdAt"`
+	}
+
+	var responsePosts []PostResponse
+	for _, post := range posts {
+		responsePosts = append(responsePosts, PostResponse{
+			ID:        post.ID,
+			Title:     post.Title,
+			Content:   post.Content,
+			Category:  post.Category,
+			Author:    post.Author,
+			CreatedAt: post.CreatedAt.Format(time.RFC3339),
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(responsePosts)
 }
+
+// GetCategories returns all available categories
+func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	categories, err := h.DB.GetAllCategories()
+	if err != nil {
+		log.Printf("Error retrieving categories: %v", err)
+		http.Error(w, "Failed to retrieve categories", http.StatusInternalServerError)
+		return
+	}
+
+	var response []CategoryResponse
+	for _, cat := range categories {
+		response = append(response, CategoryResponse{
+			ID:          cat.ID,
+			Name:        cat.Name,
+			Description: cat.Description,
+			PostCount:   cat.PostCount,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 

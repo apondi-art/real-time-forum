@@ -16,6 +16,22 @@ function loadMainApplication() {
                         <label for="post-title">Title:</label>
                         <input type="text" id="post-title" name="title" required>
                     </div>
+                      <div>
+                        <label for="post-category">Category:</label>
+                        <select id="post-category" name="category" required>
+                            <option value="">-- Select a Category --</option>
+                            <option value="Sports">Sports</option>
+                            <option value="Lifestyle">Lifestyle</option>
+                            <option value="Education">Education</option>
+                            <option value="Finance">Finance</option>
+                            <option value="Music">Music</option>
+                            <option value="Culture">Culture</option>
+                            <option value="Technology">Technology</option>
+                            <option value="Health">Health</option>
+                            <option value="Travel">Travel</option>
+                            <option value="Food">Food</option>
+                        </select>
+                    </div>
                     <div>
                         <label for="post-content">Content:</label>
                         <textarea id="post-content" name="content" rows="5" required></textarea>
@@ -65,11 +81,18 @@ function handleCreatePost(event) {
 
     const title = document.getElementById('post-title').value;
     const content = document.getElementById('post-content').value;
+     const category = document.getElementById('post-category').value;
     const messageDiv = document.getElementById('post-creation-message');
     const token = localStorage.getItem('forum_token'); // Use correct token key
 
     if (!token) {
         messageDiv.textContent = 'You must be logged in to create a post.';
+        messageDiv.className = 'message error';
+        return;
+    }
+
+    if (!category) {
+        messageDiv.textContent = 'Please select a category for your post.';
         messageDiv.className = 'message error';
         return;
     }
@@ -80,7 +103,7 @@ function handleCreatePost(event) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`, // Include the JWT token
         },
-        body: JSON.stringify({ title, content }),
+        body: JSON.stringify({ title, content ,category}),
     })
     .then(response => {
         if (!response.ok) {
@@ -100,6 +123,7 @@ function handleCreatePost(event) {
             
             setTimeout(() => {
                 loadPosts(); // Reload the posts
+                loadCategories(); // Reload categories to update countsm
                 document.getElementById('create-post-section').style.display = 'none';
                 document.getElementById('create-post-button-section').style.display = 'block';
             }, 500);
@@ -119,29 +143,69 @@ function handleCreatePost(event) {
 // Load categories from backend
 function loadCategories() {
     fetch('/api/categories')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load categories: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(categories => {
+            // Check if categories is null or not an array
+            if (!categories || !Array.isArray(categories)) {
+                throw new Error('Invalid categories data received');
+            }
+            
             const container = document.getElementById('categories-list');
-            container.innerHTML = categories.map(cat => `
-                <div class="category" data-id="${cat.id}">
-                    ${cat.name} (${cat.postCount})
-                </div>
-            `).join('');
+            if (categories.length === 0) {
+                container.innerHTML = '<div class="category-empty">No categories available</div>';
+            } else {
+                container.innerHTML = categories.map(cat => `
+                    <div class="category" data-id="${cat.id}">
+                        ${cat.name}
+                    </div>
+                `).join('');
+                
+                // Add click event to filter posts by category
+                document.querySelectorAll('.category').forEach(categoryEl => {
+                    categoryEl.addEventListener('click', () => {
+                        const categoryId = categoryEl.dataset.id;
+                        loadPosts(categoryId); // Add categoryId parameter to loadPosts
+                    });
+                });
+            }
+        })
+        .catch(error => {
+            console.error('Error loading categories:', error);
+            document.getElementById('categories-list').innerHTML = 
+                `<div class="error">Failed to load categories: ${error.message}</div>`;
         });
 }
 
-// Load posts
-function loadPosts() {
+
+function loadPosts(categoryId = null) {
     const token = localStorage.getItem('forum_token'); // Use consistent token name
     
-    fetch('/api/posts', {
+    // Build URL with query parameter if categoryId is provided
+    let url = '/api/posts';
+    if (categoryId) {
+        url += `?category=${categoryId}`;
+    }
+    
+    fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}` // Include authentication token
         }
     })
     .then(response => {
         if (!response.ok) {
-            throw new Error(`Failed to load posts: ${response.status}`);
+            return response.text().then(text => {
+                try {
+                    const data = JSON.parse(text);
+                    throw new Error(data.message || `Error: ${response.status}`);
+                } catch (e) {
+                    throw new Error(`Failed to load posts: ${response.status}`);
+                }
+            });
         }
         return response.json();
     })
@@ -158,7 +222,8 @@ function loadPosts() {
                 <h3>${post.title}</h3>
                 <p>${post.content}</p>
                 <div class="post-meta">
-                    <span class="post-author">Posted by: ${post.author || 'Anonymous'}</span>
+                    <span class="post-category">Category: ${post.category || 'Uncategorized'}</span></br>
+                    <span class="post-author">Posted by: ${post.author || 'Anonymous'}</span></br>
                     <span class="post-date">${formatDate(post.created_at || post.createdAt || new Date())}</span>
                 </div>
             </div>
@@ -167,7 +232,7 @@ function loadPosts() {
     .catch(error => {
         console.error('Error loading posts:', error);
         document.getElementById('posts-feed').innerHTML = 
-            `<p class="error">Failed to load posts. Please try again later.</p>`;
+            `<p class="error">Failed to load posts: ${error.message}</p>`;
     });
 }
 
@@ -183,15 +248,31 @@ function formatDate(dateString) {
 // Load online users
 function loadOnlineUsers() {
     fetch('/api/online-users')
-        .then(response => response.json())
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load online users: ${response.status}`);
+            }
+            return response.json();
+        })
         .then(users => {
             const container = document.getElementById('users-list');
+            
+            if (!users || !Array.isArray(users) || users.length === 0) {
+                container.innerHTML = '<div>No users online</div>';
+                return;
+            }
+            
             container.innerHTML = users.map(user => `
                 <div class="user" data-id="${user.id}">
                     ${user.username} 
                     <span class="status ${user.online ? 'online' : 'offline'}"></span>
                 </div>
             `).join('');
+        })
+        .catch(error => {
+            console.error('Error loading online users:', error);
+            document.getElementById('users-list').innerHTML = 
+                `<div class="error">Failed to load online users</div>`;
         });
 }
 

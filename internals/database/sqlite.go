@@ -28,12 +28,25 @@ type User struct {
 type Post struct {
 	ID        int
 	UserID    int
+	CategoryID int    // Added CategoryID field
+	Category   string // Added Category name field for convenience
 	Title     string
 	Content   string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	Author    string // Added field to store the author's nickname
 }
+
+// Category represents a forum category
+type Category struct {
+	ID          int
+	Name        string
+	Description string
+	PostCount   int       // Count of posts in this category
+	CreatedAt   time.Time
+}
+
+
 
 // Initialize the database connection and schema
 func New(dbPath string) (*Database, error) {
@@ -191,22 +204,24 @@ func (d *Database) AuthenticateUser(nickname, email, password string) (*User, er
 	}, nil
 }
 
-func (d *Database) CreatePost(userID int, title, content string) error {
+// CreatePost creates a new post with a category
+func (d *Database) CreatePost(userID int, categoryID int, title, content string) error {
 	_, err := d.DB.Exec(
-		"INSERT INTO posts (user_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
-		userID, title, content, time.Now(), time.Now(),
+		"INSERT INTO posts (user_id, category_id, title, content, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+		userID, categoryID, title, content, time.Now(), time.Now(),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create post: %w", err)
 	}
 	return nil
 }
-
+// GetAllPosts retrieves all posts with category information
 func (db *Database) GetAllPosts() ([]Post, error) {
 	rows, err := db.DB.Query(`
-		SELECT p.id, p.title, p.content, p.user_id, u.nickname, p.created_at, p.updated_at
+		SELECT p.id, p.title, p.content, p.user_id, p.category_id, c.name, u.nickname, p.created_at, p.updated_at
 		FROM posts p
 		JOIN users u ON p.user_id = u.id
+		JOIN categories c ON p.category_id = c.id
 		ORDER BY p.created_at DESC
 	`)
 	if err != nil {
@@ -224,7 +239,161 @@ func (db *Database) GetAllPosts() ([]Post, error) {
 			&post.Title,
 			&post.Content,
 			&post.UserID,
-			&post.Author, // Scan the nickname into the Author field
+			&post.CategoryID,
+			&post.Category, // Scan the category name
+			&post.Author,   // Scan the nickname into the Author field
+			&createdAtStr,
+			&updatedAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan post row: %w", err)
+		}
+
+		// Parse the timestamp strings into time.Time
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			log.Printf("failed to parse created_at timestamp: %v", err)
+			createdAt = time.Now() // Fallback to current time on parse error
+		}
+		post.CreatedAt = createdAt
+
+		updatedAt, err := time.Parse(time.RFC3339, updatedAtStr)
+		if err != nil {
+			log.Printf("failed to parse updated_at timestamp: %v", err)
+			updatedAt = time.Now() // Fallback to current time on parse error
+		}
+		post.UpdatedAt = updatedAt
+
+		posts = append(posts, post)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during rows iteration: %w", err)
+	}
+
+	return posts, nil
+}
+
+// GetAllCategories retrieves all categories with post counts
+func (db *Database) GetAllCategories() ([]Category, error) {
+	rows, err := db.DB.Query(`
+		SELECT c.id, c.name, c.description, COUNT(p.id) as post_count, c.created_at
+		FROM categories c
+		LEFT JOIN posts p ON c.id = p.category_id
+		GROUP BY c.id
+		ORDER BY c.name ASC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query categories: %w", err)
+	}
+	defer rows.Close()
+
+	var categories []Category
+	for rows.Next() {
+		var category Category
+		var createdAtStr string
+		var description sql.NullString
+		
+		err := rows.Scan(
+			&category.ID,
+			&category.Name,
+			&description,
+			&category.PostCount,
+			&createdAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan category row: %w", err)
+		}
+
+		if description.Valid {
+			category.Description = description.String
+		}
+
+		// Parse the timestamp string into time.Time
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			log.Printf("failed to parse category created_at timestamp: %v", err)
+			createdAt = time.Now() // Fallback to current time on parse error
+		}
+		category.CreatedAt = createdAt
+
+		categories = append(categories, category)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during categories iteration: %w", err)
+	}
+
+	return categories, nil
+}
+
+// GetCategoryByName retrieves a category by its name
+func (db *Database) GetCategoryByName(name string) (*Category, error) {
+	var category Category
+	var createdAtStr string
+	var description sql.NullString
+
+	err := db.DB.QueryRow(`
+		SELECT id, name, description, created_at
+		FROM categories
+		WHERE name = ?
+	`, name).Scan(
+		&category.ID,
+		&category.Name,
+		&description,
+		&createdAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("category not found: %s", name)
+		}
+		return nil, fmt.Errorf("failed to query category: %w", err)
+	}
+
+	if description.Valid {
+		category.Description = description.String
+	}
+
+	// Parse the timestamp string into time.Time
+	createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		log.Printf("failed to parse category created_at timestamp: %v", err)
+		createdAt = time.Now() // Fallback to current time on parse error
+	}
+	category.CreatedAt = createdAt
+
+	return &category, nil
+}
+
+// GetPostsByCategory retrieves all posts for a specific category
+func (db *Database) GetPostsByCategory(categoryID int) ([]Post, error) {
+	rows, err := db.DB.Query(`
+		SELECT p.id, p.title, p.content, p.user_id, p.category_id, c.name, u.nickname, p.created_at, p.updated_at
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		JOIN categories c ON p.category_id = c.id
+		WHERE p.category_id = ?
+		ORDER BY p.created_at DESC
+	`, categoryID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query posts by category: %w", err)
+	}
+	defer rows.Close()
+
+	var posts []Post
+	for rows.Next() {
+		var post Post
+		var createdAtStr string
+		var updatedAtStr string
+		err := rows.Scan(
+			&post.ID,
+			&post.Title,
+			&post.Content,
+			&post.UserID,
+			&post.CategoryID,
+			&post.Category,
+			&post.Author,
 			&createdAtStr,
 			&updatedAtStr,
 		)
