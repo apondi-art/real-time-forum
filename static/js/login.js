@@ -1,4 +1,5 @@
 // login.js - Handles user authentication
+
 window.addEventListener('DOMContentLoaded', function() {
     initializeApplication();
 });
@@ -13,8 +14,8 @@ function initializeApplication() {
         renderLoginPage();
     }
     
-    // Set up event delegation for all pages
-    setupEventHandlers();
+    // // Set up event delegation for all pages
+    // setupEventHandlers();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
