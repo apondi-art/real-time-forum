@@ -468,3 +468,77 @@ func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
 }
 
 
+type UserStatus struct {
+    ID        int       `json:"id"`
+    Nickname  string    `json:"nickname"`
+    Online    bool      `json:"online"`
+    LastSeen  time.Time `json:"lastSeen"`
+}
+
+// GetOnlineUsers returns all users with their online status
+func (h *Handler) GetOnlineUsers(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodGet {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    users, err := h.DB.GetAllUsersWithStatus()
+    if err != nil {
+        log.Printf("Error retrieving users: %v", err)
+        http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
+        return
+    }
+
+    var response []UserStatus
+    for _, user := range users {
+        response = append(response, UserStatus{
+            ID:       user.User.ID,
+            Nickname: user.User.Nickname,
+            Online:   user.Online,
+            LastSeen: user.LastSeen,
+        })
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(response)
+}
+
+// UpdateOnlineStatus updates the current user's online status
+func (h *Handler) UpdateOnlineStatus(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    // Verify JWT token to get user ID
+    tokenString := r.Header.Get("Authorization")
+    if tokenString == "" {
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+    tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+    claims, err := h.VerifyJWTToken(tokenString)
+    if err != nil {
+        http.Error(w, "Unauthorized", http.StatusUnauthorized)
+        return
+    }
+
+    var status struct {
+        Online bool `json:"online"`
+    }
+    if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    err = h.DB.UpdateUserStatus(int(claims.UserID), status.Online)
+    if err != nil {
+        log.Printf("Error updating user status: %v", err)
+        http.Error(w, "Failed to update status", http.StatusInternalServerError)
+        return
+    }
+
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]bool{"success": true})
+}
