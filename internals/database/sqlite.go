@@ -425,3 +425,73 @@ func (db *Database) GetPostsByCategory(categoryID int) ([]Post, error) {
 
 	return posts, nil
 }
+
+
+// Update user online status
+func (d *Database) UpdateUserStatus(userID int, online bool) error {
+    _, err := d.DB.Exec(`
+        INSERT INTO user_status (user_id, online, last_seen) 
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET 
+            online = excluded.online,
+            last_seen = excluded.last_seen
+    `, userID, online, time.Now())
+    return err
+}
+
+// Get all users with their online status
+func (d *Database) GetAllUsersWithStatus() ([]struct {
+    User   User
+    Online bool
+    LastSeen time.Time
+}, error) {
+    rows, err := d.DB.Query(`
+        SELECT u.id, u.nickname, u.email, 
+               COALESCE(us.online, FALSE) as online,
+               COALESCE(us.last_seen, datetime('now')) as last_seen
+        FROM users u
+        LEFT JOIN user_status us ON u.id = us.user_id
+        ORDER BY us.online DESC, u.nickname ASC
+    `)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var users []struct {
+        User     User
+        Online   bool
+        LastSeen time.Time
+    }
+
+    for rows.Next() {
+        var user struct {
+            User     User
+            Online   bool
+            LastSeen time.Time
+        }
+        var lastSeenStr string
+        
+        err := rows.Scan(
+            &user.User.ID,
+            &user.User.Nickname,
+            &user.User.Email,
+            &user.Online,
+            &lastSeenStr,
+        )
+        if err != nil {
+            return nil, err
+        }
+
+        // Parse the timestamp
+        lastSeen, err := time.Parse(time.RFC3339, lastSeenStr)
+        if err != nil {
+            lastSeen = time.Now()
+        }
+        user.LastSeen = lastSeen
+
+        users = append(users, user)
+    }
+
+    return users, nil
+}

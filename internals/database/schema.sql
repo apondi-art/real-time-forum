@@ -44,3 +44,11 @@ INSERT INTO categories (name) VALUES
     ('Health'),
     ('Travel'),
     ('Food');
+
+    -- Add to your schema.sql
+CREATE TABLE IF NOT EXISTS user_status (
+    user_id INTEGER PRIMARY KEY,
+    online BOOLEAN NOT NULL DEFAULT FALSE,
+    last_seen DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);

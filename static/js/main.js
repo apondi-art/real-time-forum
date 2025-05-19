@@ -68,6 +68,15 @@ function loadMainApplication() {
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
     document.getElementById('create-post-button').addEventListener('click', showCreatePostForm);
     document.getElementById('new-post-form').addEventListener('submit', handleCreatePost);
+
+     // Add periodic status updates
+     updateOnlineStatus(true);
+     setInterval(() => updateOnlineStatus(true), 30000); // Update every 30 seconds
+     
+     // Add beforeunload event to mark user as offline when leaving
+     window.addEventListener('beforeunload', () => {
+         updateOnlineStatus(false);
+     });
 }
 
 function showCreatePostForm() {
@@ -320,6 +329,101 @@ function handleLogout() {
         console.error('Error during logout:', error);
         alert('Logout failed. Please try again or refresh the page.');
     });
+}
+
+// Update the online status
+function updateOnlineStatus(online) {
+    const token = localStorage.getItem('forum_token');
+    if (!token) return;
+
+    fetch('/api/online-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ online }),
+    }).catch(err => console.error('Error updating status:', err));
+}
+
+// Enhanced loadOnlineUsers function
+function loadOnlineUsers() {
+    fetch('/api/online-users')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`Failed to load users: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(users => {
+            const container = document.getElementById('users-list');
+            
+            if (!users || !Array.isArray(users) || users.length === 0) {
+                container.innerHTML = '<div>No users found</div>';
+                return;
+            }
+            
+            // Separate online and offline users
+            const onlineUsers = users.filter(u => u.online);
+            const offlineUsers = users.filter(u => !u.online);
+            
+            let html = '';
+            
+            if (onlineUsers.length > 0) {
+                html += `
+                    <div class="user-group">
+                        <div class="user-group-title">Online - ${onlineUsers.length}</div>
+                        ${onlineUsers.map(user => createUserElement(user)).join('')}
+                    </div>
+                `;
+            }
+            
+            if (offlineUsers.length > 0) {
+                html += `
+                    <div class="user-group">
+                        <div class="user-group-title">Offline - ${offlineUsers.length}</div>
+                        ${offlineUsers.map(user => createUserElement(user)).join('')}
+                    </div>
+                `;
+            }
+            
+            container.innerHTML = html;
+        })
+        .catch(error => {
+            console.error('Error loading users:', error);
+            document.getElementById('users-list').innerHTML = 
+                `<div class="error">Failed to load users</div>`;
+        });
+}
+
+function createUserElement(user) {
+    const lastSeen = user.lastSeen ? formatLastSeen(user.lastSeen) : '';
+    return `
+        <div class="user ${user.online ? 'online' : 'offline'}" data-id="${user.id}">
+            <div class="user-info">
+                <div class="user-name">${user.nickname}</div>
+                <div class="user-status">
+                    ${user.online ? 'Online' : `Last seen ${lastSeen}`}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function formatLastSeen(timestamp) {
+    const now = new Date();
+    const date = new Date(timestamp);
+    const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
+    
+    if (diffHours < 1) {
+        const diffMinutes = Math.floor((now - date) / (1000 * 60));
+        return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+    } else if (diffHours < 24) {
+        return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    } else {
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+    }
 }
 
 window.loadMainApplication = loadMainApplication;
