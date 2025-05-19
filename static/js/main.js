@@ -57,7 +57,7 @@ function loadMainApplication() {
                 </section>
             </div>
             <!-- Post Details Modal with Comments Section -->
-            <div id="post-detail-modal" class="modal" style="display: none;">
+            <div id="post-detail-modal" class="modal" style="display:none;">
                 <div class="modal-content">
                     <span class="close-modal">&times;</span>
                     <div id="post-detail-content"></div>
@@ -106,6 +106,9 @@ function showCreatePostForm() {
     document.getElementById('create-post-button-section').style.display = 'none';
 }
 
+function closePostDetailModal() {
+    document.getElementById('post-detail-modal').style.display = 'none';
+}
 // Handle post creation
 function handleCreatePost(event) {
     event.preventDefault(); // Prevent default form submission
@@ -259,6 +262,14 @@ function loadPosts(categoryId = null) {
                 </div>
             </div>
         `).join('');
+
+          // Add click event to posts to open detail modal
+        document.querySelectorAll('.post').forEach(post => {
+            post.addEventListener('click', () => {
+                const postId = post.dataset.id;
+                openPostDetailModal(postId);
+            });
+        });
     })
     .catch(error => {
         console.error('Error loading posts:', error);
@@ -267,16 +278,26 @@ function loadPosts(categoryId = null) {
     });
 }
 
+
 // Function to open post detail modal with comments
 function openPostDetailModal(postId) {
     // Get post details
     const token = localStorage.getItem('forum_token');
+
+     // First verify the postId exists and is valid
+    if (!postId) {
+        console.error('No post ID provided');
+        return;
+    }
+
+    console.log(`Attempting to load post with ID: ${postId}`); // Debug log
     
     fetch(`/api/posts/${postId}`, {
         headers: {
             'Authorization': `Bearer ${token}`
         }
     })
+    
     .then(response => {
         if (!response.ok) throw new Error(`Failed to load post: ${response.status}`);
         return response.json();
