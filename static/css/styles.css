@@ -49,3 +49,64 @@ header {
     padding: 5px 10px;
     cursor: pointer;
 }
+
+/* User list styles */
+.user-group {
+    margin-bottom: 1rem;
+}
+
+.user-group-title {
+    color: #72767d;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    margin: 1rem 0 0.5rem 0;
+    padding-left: 0.5rem;
+}
+
+.user {
+    display: flex;
+    align-items: center;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s;
+}
+
+.user:hover {
+    background-color: rgba(79, 84, 92, 0.16);
+}
+
+.user-avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #7289da;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin-right: 0.5rem;
+}
+
+.user-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.user-name {
+    font-weight: 500;
+    color: #dcddde;
+}
+
+.user-status {
+    font-size: 0.75rem;
+    color: #72767d;
+}
+
+.user.online .user-status {
+    color: #3ba55c;
+}
+
+.user.offline .user-name {
+    opacity: 0.7;
+}
