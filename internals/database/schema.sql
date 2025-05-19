@@ -31,6 +31,25 @@ CREATE TABLE IF NOT EXISTS posts (
     FOREIGN KEY (category_id) REFERENCES categories(id)
 );
 
+-- comments table to match your database functions
+CREATE TABLE IF NOT EXISTS comments (
+ id INTEGER PRIMARY KEY AUTOINCREMENT,
+ user_id INTEGER NOT NULL,
+ post_id INTEGER NOT NULL,
+ content TEXT NOT NULL,
+ created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+ FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+ FOREIGN KEY (post_id) REFERENCES posts(id) ON DELETE CASCADE
+);
+
+
+    -- Add to your schema.sql
+CREATE TABLE IF NOT EXISTS user_status (
+    user_id INTEGER PRIMARY KEY,
+    online BOOLEAN NOT NULL DEFAULT FALSE,
+    last_seen DATETIME,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
 
 -- Insert the predefined categories
 INSERT INTO categories (name) VALUES
@@ -44,11 +63,3 @@ INSERT INTO categories (name) VALUES
     ('Health'),
     ('Travel'),
     ('Food');
-
-    -- Add to your schema.sql
-CREATE TABLE IF NOT EXISTS user_status (
-    user_id INTEGER PRIMARY KEY,
-    online BOOLEAN NOT NULL DEFAULT FALSE,
-    last_seen DATETIME,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
