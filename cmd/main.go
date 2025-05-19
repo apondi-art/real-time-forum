@@ -42,7 +42,7 @@ func main() {
 	http.HandleFunc("/api/register", handler.Register)
 	http.HandleFunc("/api/login", handler.Login)
 	http.HandleFunc("/api/categories", handler.GetCategories)
-	http.HandleFunc("api/home", handler.Home)
+	http.HandleFunc("/api/home", handler.Home)
 	http.HandleFunc("/api/posts", func(w http.ResponseWriter, r *http.Request) {
 		switch r.Method {
 		case http.MethodGet:
@@ -54,7 +54,16 @@ func main() {
 		}
 	})
 	http.HandleFunc("/api/logout", handler.Logout)
-	
+
+	// Add user status endpoints
+	http.HandleFunc("/api/online-users", handler.GetOnlineUsers)
+	http.HandleFunc("/api/online-status", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPost {
+			handler.UpdateOnlineStatus(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 
 	// Start the server
 	port := "8080" // Choose a port
