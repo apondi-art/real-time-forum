@@ -46,6 +46,16 @@ type Category struct {
 	CreatedAt   time.Time
 }
 
+// Comment represents a comment on a post
+type Comment struct {
+	ID        int       `json:"id"`
+	PostID    int       `json:"postId"`
+	UserID    int       `json:"authorId"`
+	Content   string    `json:"content"`
+	CreatedAt time.Time `json:"createdAt"`
+	Author    string    `json:"author"` // The nickname of the author
+}
+
 
 
 // Initialize the database connection and schema
@@ -495,3 +505,98 @@ func (d *Database) GetAllUsersWithStatus() ([]struct {
 
     return users, nil
 }
+
+//Comments section
+//checks if post exist in post table
+func(db *Database)PostExists(PostID int)(bool,error){
+	var count int
+
+	err:=db.DB.QueryRow("SELECT COUNT(*) FROM posts WHERE id = ?",PostID).Scan(&count)
+	if err != nil {
+		return false, fmt.Errorf("error checking post existence: %w", err)
+	}
+	return count > 0,nil
+
+}
+
+// CreateComment adds a new comment to a post
+
+func (db *Database) CreateComment(userID, postID int, content string) (int, error){
+	result, err := db.DB.Exec(
+		"INSERT INTO comments (user_id, post_id, content, created_at) VALUES (?, ?, ?, ?)",
+		userID, postID, content, time.Now(),
+	)
+	if err != nil {
+		return 0, fmt.Errorf("failed to create comment: %w", err)
+	}
+
+
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get comment ID: %w", err)
+	}
+	return int(id), nil
+
+}
+
+// GetCommentsByPostID retrieves all comments for a specific post
+func (db *Database) GetCommentsByPostID(postID int) ([]Comment, error) {
+	rows, err := db.DB.Query(`
+		SELECT c.id, c.post_id, c.user_id, c.content, u.nickname, c.created_at
+		FROM comments c
+		JOIN users u ON c.user_id = u.id
+		WHERE c.post_id = ?
+		ORDER BY c.created_at ASC
+	`, postID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query comments: %w", err)
+	}
+	defer rows.Close()
+
+	var comments []Comment
+	for rows.Next() {
+		var comment Comment
+		var createdAtStr string
+		err := rows.Scan(
+			&comment.ID,
+			&comment.PostID,
+			&comment.UserID,
+			&comment.Content,
+			&comment.Author,
+			&createdAtStr,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan comment row: %w", err)
+		}
+
+		// Parse the timestamp string into time.Time
+		createdAt, err := time.Parse(time.RFC3339, createdAtStr)
+		if err != nil {
+			createdAt = time.Now() // Fallback to current time on parse error
+		}
+		comment.CreatedAt = createdAt
+
+		comments = append(comments, comment)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error during comment iteration: %w", err)
+	}
+
+	return comments, nil
+}
+
+// GetUserByID retrieves a user by their ID
+func (db *Database) GetUserByID(userID int) (*User, error) {
+	var user User
+	err := db.DB.QueryRow(`
+		SELECT id, nickname, email FROM users WHERE id = ?
+	`, userID).Scan(&user.ID, &user.Nickname, &user.Email)
+	
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user: %w", err)
+	}
+	
+	return &user, nil
+}
+
