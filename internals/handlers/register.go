@@ -46,9 +46,9 @@ type AuthResponse struct {
 }
 
 type NewPostRequest struct {
-	Title     string `json:"title"`
-	Content   string `json:"content"`
-	Category  string `json:"category"` // Added category field
+	Title    string `json:"title"`
+	Content  string `json:"content"`
+	Category string `json:"category"` // Added category field
 }
 
 type PostResponse struct {
@@ -75,7 +75,7 @@ type Claims struct {
 	Issuer    string `json:"iss"`
 }
 
-//comments struct
+// comments struct
 // Comment types
 type Comment struct {
 	ID        int       `json:"id"`
@@ -91,11 +91,10 @@ type NewCommentRequest struct {
 }
 
 type CommentResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
+	Success bool    `json:"success"`
+	Message string  `json:"message"`
 	Comment Comment `json:"comment,omitempty"`
 }
-
 
 func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -204,6 +203,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// After successful authentication and token generation:
+	h.DB.DeleteSessionsForUser(user.ID) // Remove old sessions
+	expirationTime := time.Now().Add(24 * time.Hour)
+	h.DB.StoreSession(user.ID, token, expirationTime) // Store new session
+
 	sendAuthResponse(w, true, "Login successful", http.StatusOK, user, token)
 }
 
@@ -276,6 +280,11 @@ func (h *Handler) VerifyJWTToken(tokenString string) (*Claims, error) {
 	// Basic expiry check
 	if time.Now().Unix() > claims.ExpiresAt {
 		return nil, fmt.Errorf("token has expired")
+	}
+
+	valid, err := h.DB.IsTokenValid(tokenString)
+	if err != nil || !valid {
+		return nil, fmt.Errorf("invalid or expired session")
 	}
 
 	return &claims, nil
@@ -372,8 +381,6 @@ func (h *Handler) CreatePost(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(PostResponse{Success: true, Message: "Post created successfully"})
 }
 
-
-
 type LogoutResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
@@ -383,6 +390,12 @@ func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	if tokenString != "" {
+		h.DB.DeleteSessionByToken(tokenString)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -424,6 +437,10 @@ func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		posts, err = h.DB.GetPostsByCategory(categoryID)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 	} else {
 		// Otherwise get all posts
 		posts, err = h.DB.GetAllPosts()
@@ -489,84 +506,82 @@ func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-
 type UserStatus struct {
-    ID        int       `json:"id"`
-    Nickname  string    `json:"nickname"`
-    Online    bool      `json:"online"`
-    LastSeen  time.Time `json:"lastSeen"`
+	ID       int       `json:"id"`
+	Nickname string    `json:"nickname"`
+	Online   bool      `json:"online"`
+	LastSeen time.Time `json:"lastSeen"`
 }
 
 // GetOnlineUsers returns all users with their online status
 func (h *Handler) GetOnlineUsers(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodGet {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    users, err := h.DB.GetAllUsersWithStatus()
-    if err != nil {
-        log.Printf("Error retrieving users: %v", err)
-        http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
-        return
-    }
+	users, err := h.DB.GetAllUsersWithStatus()
+	if err != nil {
+		log.Printf("Error retrieving users: %v", err)
+		http.Error(w, "Failed to retrieve users", http.StatusInternalServerError)
+		return
+	}
 
-    var response []UserStatus
-    for _, user := range users {
-        response = append(response, UserStatus{
-            ID:       user.User.ID,
-            Nickname: user.User.Nickname,
-            Online:   user.Online,
-            LastSeen: user.LastSeen,
-        })
-    }
+	var response []UserStatus
+	for _, user := range users {
+		response = append(response, UserStatus{
+			ID:       user.User.ID,
+			Nickname: user.User.Nickname,
+			Online:   user.Online,
+			LastSeen: user.LastSeen,
+		})
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    json.NewEncoder(w).Encode(response)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // UpdateOnlineStatus updates the current user's online status
 func (h *Handler) UpdateOnlineStatus(w http.ResponseWriter, r *http.Request) {
-    if r.Method != http.MethodPost {
-        http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-        return
-    }
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-    // Verify JWT token to get user ID
-    tokenString := r.Header.Get("Authorization")
-    if tokenString == "" {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
-    tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+	// Verify JWT token to get user ID
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-    claims, err := h.VerifyJWTToken(tokenString)
-    if err != nil {
-        http.Error(w, "Unauthorized", http.StatusUnauthorized)
-        return
-    }
+	claims, err := h.VerifyJWTToken(tokenString)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-    var status struct {
-        Online bool `json:"online"`
-    }
-    if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
-        http.Error(w, "Invalid request body", http.StatusBadRequest)
-        return
-    }
+	var status struct {
+		Online bool `json:"online"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
 
-    err = h.DB.UpdateUserStatus(int(claims.UserID), status.Online)
-    if err != nil {
-        log.Printf("Error updating user status: %v", err)
-        http.Error(w, "Failed to update status", http.StatusInternalServerError)
-        return
-    }
+	err = h.DB.UpdateUserStatus(int(claims.UserID), status.Online)
+	if err != nil {
+		log.Printf("Error updating user status: %v", err)
+		http.Error(w, "Failed to update status", http.StatusInternalServerError)
+		return
+	}
 
-    w.WriteHeader(http.StatusOK)
-    json.NewEncoder(w).Encode(map[string]bool{"success": true})
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-//comments section handler
-
+// comments section handler
 
 // Improved AddComment handler
 func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request, postIDStr string) {
@@ -621,7 +636,6 @@ func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request, postIDStr s
 	json.NewEncoder(w).Encode(CommentResponse{Success: true, Message: "Comment added successfully", Comment: comment})
 }
 
-
 // GetPostByID handles retrieving a single post by its ID
 func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request, postIDStr string) {
 	if r.Method != http.MethodGet {
@@ -663,9 +677,8 @@ func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request, postIDStr 
 	json.NewEncoder(w).Encode(response)
 }
 
-
 // GetComments handles retrieving all comments for a specific post
-func (h *Handler) GetComments(w http.ResponseWriter, r *http.Request,postIDStr string) {
+func (h *Handler) GetComments(w http.ResponseWriter, r *http.Request, postIDStr string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
