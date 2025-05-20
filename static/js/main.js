@@ -498,20 +498,7 @@ function handleLogout() {
     });
 }
 
-// Update the online status
-function updateOnlineStatus(online) {
-    const token = localStorage.getItem('forum_token');
-    if (!token) return;
 
-    fetch('/api/online-status', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ online }),
-    }).catch(err => console.error('Error updating status:', err));
-}
 
 // Enhanced loadOnlineUsers function
 function loadOnlineUsers() {
