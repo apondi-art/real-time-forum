@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS user_status (
 );
 
 -- Insert the predefined categories
-INSERT INTO categories (name) VALUES
+INSERT OR IGNORE INTO categories (name) VALUES
     ('Sports'),
     ('Lifestyle'),
     ('Education'),
