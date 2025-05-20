@@ -567,36 +567,21 @@ func (h *Handler) UpdateOnlineStatus(w http.ResponseWriter, r *http.Request) {
 
 //comments section handler
 
-// AddComment handles creating a new comment on a post
-func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {
+
+// Improved AddComment handler
+func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request, postIDStr string) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract post ID from URL path
-	// Expected format: /api/posts/{postId}/comments
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "Invalid URL path", http.StatusBadRequest)
-		return
-	}
-	postIDStr := parts[len(parts)-2] // Second to last part should be postId
 	postID, err := strconv.Atoi(postIDStr)
 	if err != nil {
 		http.Error(w, "Invalid post ID", http.StatusBadRequest)
 		return
 	}
 
-	// Verify JWT token to get user ID
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return
-	}
-	// Remove "Bearer " prefix if present
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
-
+	tokenString := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	claims, err := h.VerifyJWTToken(tokenString)
 	if err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
@@ -604,97 +589,96 @@ func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := int(claims.UserID)
 
-	// Parse request body
 	var newComment NewCommentRequest
-	if err := json.NewDecoder(r.Body).Decode(&newComment); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
-		return
-	}
-
-	// Validate input
-	if newComment.Content == "" {
+	if err := json.NewDecoder(r.Body).Decode(&newComment); err != nil || newComment.Content == "" {
 		http.Error(w, "Comment content is required", http.StatusBadRequest)
 		return
 	}
 
-	// Check if the post exists
-	postExists, err := h.DB.PostExists(postID)
-	if err != nil {
-		log.Printf("Error checking post existence: %v", err)
-		http.Error(w, "Failed to validate post", http.StatusInternalServerError)
-		return
-	}
-	if !postExists {
+	if exists, err := h.DB.PostExists(postID); err != nil || !exists {
 		http.Error(w, "Post not found", http.StatusNotFound)
 		return
 	}
 
-	// Create the comment in the database
 	commentID, err := h.DB.CreateComment(userID, postID, newComment.Content)
 	if err != nil {
-		log.Printf("Error creating comment: %v", err)
 		http.Error(w, "Failed to create comment", http.StatusInternalServerError)
 		return
 	}
 
-	// Get user information for response
-	user, err := h.DB.GetUserByID(userID)
-	if err != nil {
-		log.Printf("Error getting user info: %v", err)
-		// Continue with anonymous user if error occurs
-	}
-
-	// Create response
-	response := CommentResponse{
-		Success: true,
-		Message: "Comment added successfully",
-		Comment: Comment{
-			ID:        commentID,
-			Content:   newComment.Content,
-			PostID:    postID,
-			AuthorID:  userID,
-			Author:    user.Nickname,
-			CreatedAt: time.Now(),
-		},
+	user, _ := h.DB.GetUserByID(userID)
+	comment := Comment{
+		ID:        commentID,
+		Content:   newComment.Content,
+		PostID:    postID,
+		AuthorID:  userID,
+		Author:    user.Nickname,
+		CreatedAt: time.Now(),
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(CommentResponse{Success: true, Message: "Comment added successfully", Comment: comment})
 }
 
 
-// GetComments handles retrieving all comments for a specific post
-func (h *Handler) GetComments(w http.ResponseWriter, r *http.Request) {
+// GetPostByID handles retrieving a single post by its ID
+func (h *Handler) GetPostByID(w http.ResponseWriter, r *http.Request, postIDStr string) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Extract post ID from URL path
-	// Expected format: /api/posts/{postId}/comments
-	parts := strings.Split(r.URL.Path, "/")
-	if len(parts) < 4 {
-		http.Error(w, "Invalid URL path", http.StatusBadRequest)
-		return
-	}
-	postIDStr := parts[len(parts)-2] // Second to last part should be postId
 	postID, err := strconv.Atoi(postIDStr)
 	if err != nil {
 		http.Error(w, "Invalid post ID", http.StatusBadRequest)
 		return
 	}
 
-	// Verify user is authenticated
-	tokenString := r.Header.Get("Authorization")
-	if tokenString == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	post, err := h.DB.GetPostByID(postID)
+	if err != nil {
+		http.Error(w, "Post not found", http.StatusNotFound)
 		return
 	}
-	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-	_, err = h.VerifyJWTToken(tokenString)
+	type PostResponse struct {
+		ID        int    `json:"id"`
+		Title     string `json:"title"`
+		Content   string `json:"content"`
+		Category  string `json:"category"`
+		Author    string `json:"author"`
+		CreatedAt string `json:"createdAt"`
+	}
+
+	response := PostResponse{
+		ID:        post.ID,
+		Title:     post.Title,
+		Content:   post.Content,
+		Category:  post.Category,
+		Author:    post.Author,
+		CreatedAt: post.CreatedAt.Format(time.RFC3339),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+
+// GetComments handles retrieving all comments for a specific post
+func (h *Handler) GetComments(w http.ResponseWriter, r *http.Request,postIDStr string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Second to last part should be postId
+	postID, err := strconv.Atoi(postIDStr)
 	if err != nil {
+		http.Error(w, "Invalid post ID", http.StatusBadRequest)
+		return
+	}
+	tokenString := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
+	if _, err := h.VerifyJWTToken(tokenString); err != nil {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
