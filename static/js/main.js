@@ -5,7 +5,8 @@ function loadMainApplication() {
                 <h1>Forum</h1>
                 <button id="logout-btn">Logout</button>
             </header>
-               <section id="create-post-button-section" class="forum-section">
+            
+            <section id="create-post-button-section" class="forum-section">
                 <button id="create-post-button">Create Post</button>
             </section>
 
@@ -16,7 +17,7 @@ function loadMainApplication() {
                         <label for="post-title">Title:</label>
                         <input type="text" id="post-title" name="title" required>
                     </div>
-                      <div>
+                    <div>
                         <label for="post-category">Category:</label>
                         <select id="post-category" name="category" required>
                             <option value="">-- Select a Category --</option>
@@ -40,6 +41,7 @@ function loadMainApplication() {
                 </form>
                 <div id="post-creation-message" class="message"></div>
             </section>
+
             <div class="sections-container">
                 <section id="categories-section" class="forum-section">
                     <h2>Categories</h2>
@@ -56,23 +58,6 @@ function loadMainApplication() {
                     <div id="users-list"></div>
                 </section>
             </div>
-            <!-- Post Details Modal with Comments Section -->
-            <div id="post-detail-modal" class="modal" style="display:none;">
-                <div class="modal-content">
-                    <span class="close-modal">&times;</span>
-                    <div id="post-detail-content"></div>
-                    
-                    <div class="comments-section">
-                        <h3>Comments</h3>
-                        <div id="comments-container"></div>
-                        
-                        <form id="add-comment-form">
-                            <textarea id="comment-content" placeholder="Write a comment..." required></textarea>
-                            <button type="submit">Add Comment</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
         </div>
     `;
 
@@ -83,39 +68,53 @@ function loadMainApplication() {
 
     // Add event listeners
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
-    document.getElementById('create-post-button').addEventListener('click', showCreatePostForm);
+    document.getElementById('create-post-button').addEventListener('click', toggleCreatePostForm);
     document.getElementById('new-post-form').addEventListener('submit', handleCreatePost);
-
-      // Close modal when clicking on X
-      document.querySelector('.close-modal').addEventListener('click', closePostDetailModal);
     
-      // Add comment form submission
-      document.getElementById('add-comment-form').addEventListener('submit', handleAddComment);
-     // Add periodic status updates
-     updateOnlineStatus(true);
-     setInterval(() => updateOnlineStatus(true), 30000); // Update every 30 seconds
+    // Add periodic status updates
+    updateOnlineStatus(true);
+    setInterval(() => updateOnlineStatus(true), 30000); // Update every 30 seconds
      
-     // Add beforeunload event to mark user as offline when leaving
-     window.addEventListener('beforeunload', () => {
-         updateOnlineStatus(false);
-     });
+    // Add beforeunload event to mark user as offline when leaving
+    window.addEventListener('beforeunload', () => {
+        updateOnlineStatus(false);
+    });
 }
 
-function showCreatePostForm() {
-    document.getElementById('create-post-section').style.display = 'block';
-    document.getElementById('create-post-button-section').style.display = 'none';
+function toggleCreatePostForm() {
+    const formSection = document.getElementById('create-post-section');
+    const createButton = document.getElementById('create-post-button');
+    
+    if (formSection.style.display === 'none') {
+        // Show the form
+        formSection.style.display = 'block';
+        createButton.textContent = 'Cancel';
+        createButton.setAttribute('data-mode', 'cancel');
+    } else {
+        // Hide the form
+        formSection.style.display = 'none';
+        createButton.textContent = 'Create Post';
+        createButton.removeAttribute('data-mode');
+        
+        // Clear any validation messages
+        const messageDiv = document.getElementById('post-creation-message');
+        if (messageDiv) {
+            messageDiv.textContent = '';
+            messageDiv.className = 'message';
+        }
+        
+        // Optionally reset the form
+        document.getElementById('new-post-form').reset();
+    }
 }
 
-function closePostDetailModal() {
-    document.getElementById('post-detail-modal').style.display = 'none';
-}
 // Handle post creation
 function handleCreatePost(event) {
     event.preventDefault(); // Prevent default form submission
 
     const title = document.getElementById('post-title').value;
     const content = document.getElementById('post-content').value;
-     const category = document.getElementById('post-category').value;
+    const category = document.getElementById('post-category').value;
     const messageDiv = document.getElementById('post-creation-message');
     const token = localStorage.getItem('forum_token'); // Use correct token key
 
@@ -137,7 +136,7 @@ function handleCreatePost(event) {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`, // Include the JWT token
         },
-        body: JSON.stringify({ title, content ,category}),
+        body: JSON.stringify({ title, content, category }),
     })
     .then(response => {
         if (!response.ok) {
@@ -157,7 +156,7 @@ function handleCreatePost(event) {
             
             setTimeout(() => {
                 loadPosts(); // Reload the posts
-                loadCategories(); // Reload categories to update countsm
+                loadCategories(); // Reload categories to update counts
                 document.getElementById('create-post-section').style.display = 'none';
                 document.getElementById('create-post-button-section').style.display = 'block';
             }, 500);
@@ -172,7 +171,6 @@ function handleCreatePost(event) {
         messageDiv.className = 'message error';
     });
 }
-
 
 // Load categories from backend
 function loadCategories() {
@@ -214,7 +212,6 @@ function loadCategories() {
                 `<div class="error">Failed to load categories: ${error.message}</div>`;
         });
 }
-
 
 function loadPosts(categoryId = null) {
     const token = localStorage.getItem('forum_token'); // Use consistent token name
@@ -259,15 +256,53 @@ function loadPosts(categoryId = null) {
                     <span class="post-category">Category: ${post.category || 'Uncategorized'}</span></br>
                     <span class="post-author">Posted by: ${post.author || 'Anonymous'}</span></br>
                     <span class="post-date">${formatDate(post.created_at || post.createdAt || new Date())}</span>
+                    <div class="post-actions">
+                        <button class="comment-btn" data-id="${post.id || post.ID}">
+                            <i class="comment-icon">💬</i> Comments
+                        </button>
+                    </div>
+                </div>
+                <div class="comments-section" id="comments-section-${post.id || post.ID}" style="display: none;">
+                    <div class="comments-container" id="comments-container-${post.id || post.ID}">
+                        <p>Loading comments...</p>
+                    </div>
+                    <form class="add-comment-form" data-post-id="${post.id || post.ID}">
+                        <textarea class="comment-content" placeholder="Write a comment..." required></textarea>
+                        <button type="submit">Add Comment</button>
+                    </form>
                 </div>
             </div>
         `).join('');
 
-          // Add click event to posts to open detail modal
+        // Add click event to comment buttons
+        document.querySelectorAll('.comment-btn').forEach(btn => {
+            btn.addEventListener('click', (event) => {
+                event.stopPropagation(); // Prevent post click event
+                const postId = btn.dataset.id;
+                toggleComments(postId);
+            });
+        });
+        
+        // Add submit event to comment forms
+        document.querySelectorAll('.add-comment-form').forEach(form => {
+            form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                event.stopPropagation(); // Prevent post click event
+                const postId = form.dataset.postId;
+                const content = form.querySelector('.comment-content').value.trim();
+                addComment(postId, content, form);
+            });
+        });
+        
+        // Add click event to posts for viewing details
         document.querySelectorAll('.post').forEach(post => {
-            post.addEventListener('click', () => {
-                const postId = post.dataset.id;
-                openPostDetailModal(postId);
+            post.addEventListener('click', (event) => {
+                // Don't trigger if clicking on comment button or form
+                if (!event.target.closest('.comments-section') && 
+                    !event.target.closest('.comment-btn')) {
+                    const postId = post.dataset.id;
+                    viewPostDetails(postId);
+                }
             });
         });
     })
@@ -278,62 +313,30 @@ function loadPosts(categoryId = null) {
     });
 }
 
-
-// Function to open post detail modal with comments
-function openPostDetailModal(postId) {
-    // Get post details
-    const token = localStorage.getItem('forum_token');
-
-     // First verify the postId exists and is valid
-    if (!postId) {
-        console.error('No post ID provided');
-        return;
-    }
-
-    console.log(`Attempting to load post with ID: ${postId}`); // Debug log
+// Function to toggle comments visibility and load them if needed
+function toggleComments(postId) {
+    const commentsSection = document.getElementById(`comments-section-${postId}`);
     
-    fetch(`/api/posts/${postId}`, {
-        headers: {
-            'Authorization': `Bearer ${token}`
-        }
-    })
-    
-    .then(response => {
-        if (!response.ok) throw new Error(`Failed to load post: ${response.status}`);
-        return response.json();
-    })
-    .then(post => {
-        // Display post content in modal
-        document.getElementById('post-detail-content').innerHTML = `
-            <div class="post-full">
-                <h2>${post.title}</h2>
-                <p>${post.content}</p>
-                <div class="post-meta">
-                    <span class="post-category">Category: ${post.category || 'Uncategorized'}</span>
-                    <span class="post-author">Posted by: ${post.author || 'Anonymous'}</span>
-                    <span class="post-date">${formatDate(post.created_at || post.createdAt || new Date())}</span>
-                </div>
-            </div>
-        `;
-        
-        // Store current post ID in the form for comment submission
-        document.getElementById('add-comment-form').dataset.postId = postId;
-        
-        // Load comments for this post
+    if (commentsSection.style.display === 'none') {
+        commentsSection.style.display = 'block';
         loadComments(postId);
-        
-        // Show the modal
-        document.getElementById('post-detail-modal').style.display = 'block';
-    })
-    .catch(error => {
-        console.error('Error loading post details:', error);
-        alert('Failed to load post details. Please try again.');
-    });
+    } else {
+        commentsSection.style.display = 'none';
+    }
+}
+
+// Function to view full post details
+function viewPostDetails(postId) {
+    // You can either keep the original modal or implement an inline expansion
+    console.log(`View details for post: ${postId}`);
+    // For now, just toggle comments to show more info
+    toggleComments(postId);
 }
 
 // Function to load comments for a specific post
 function loadComments(postId) {
     const token = localStorage.getItem('forum_token');
+    const commentsContainer = document.getElementById(`comments-container-${postId}`);
     
     fetch(`/api/posts/${postId}/comments`, {
         headers: {
@@ -345,14 +348,12 @@ function loadComments(postId) {
         return response.json();
     })
     .then(comments => {
-        const container = document.getElementById('comments-container');
-        
         if (!comments || comments.length === 0) {
-            container.innerHTML = '<p>No comments yet. Be the first to comment!</p>';
+            commentsContainer.innerHTML = '<p>No comments yet. Be the first to comment!</p>';
             return;
         }
         
-        container.innerHTML = comments.map(comment => `
+        commentsContainer.innerHTML = comments.map(comment => `
             <div class="comment">
                 <div class="comment-content">${comment.content}</div>
                 <div class="comment-meta">
@@ -364,18 +365,13 @@ function loadComments(postId) {
     })
     .catch(error => {
         console.error('Error loading comments:', error);
-        document.getElementById('comments-container').innerHTML = 
-            `<p class="error">Failed to load comments: ${error.message}</p>`;
+        commentsContainer.innerHTML = `<p class="error">Failed to load comments: ${error.message}</p>`;
     });
 }
 
-// Function to handle adding a new comment
-function handleAddComment(event) {
-    event.preventDefault();
-    
+// Function to add a new comment
+function addComment(postId, content, form) {
     const token = localStorage.getItem('forum_token');
-    const postId = event.target.dataset.postId;
-    const content = document.getElementById('comment-content').value.trim();
     
     if (!token) {
         alert('You must be logged in to comment.');
@@ -402,17 +398,10 @@ function handleAddComment(event) {
     .then(data => {
         if (data.success) {
             // Clear the comment form
-            document.getElementById('comment-content').value = '';
+            form.querySelector('.comment-content').value = '';
             
             // Reload comments to show the new one
             loadComments(postId);
-            
-            // Update post's comment count in the main view
-            const commentButton = document.querySelector(`.view-comments-btn[data-id="${postId}"] .comment-count`);
-            if (commentButton) {
-                const currentCount = parseInt(commentButton.textContent) || 0;
-                commentButton.textContent = currentCount + 1;
-            }
         } else {
             alert(`Failed to add comment: ${data.message}`);
         }
@@ -503,59 +492,7 @@ function handleLogout() {
         // Force page reload to ensure clean application state
         window.location.reload();
     })
-    .catch(error => {// Function to handle adding a new comment
-        function handleAddComment(event) {
-            event.preventDefault();
-            
-            const token = localStorage.getItem('forum_token');
-            const postId = event.target.dataset.postId;
-            const content = document.getElementById('comment-content').value.trim();
-            
-            if (!token) {
-                alert('You must be logged in to comment.');
-                return;
-            }
-            
-            if (!content) {
-                alert('Comment cannot be empty.');
-                return;
-            }
-            
-            fetch(`/api/posts/${postId}/comments`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                },
-                body: JSON.stringify({ content })
-            })
-            .then(response => {
-                if (!response.ok) throw new Error(`Failed to add comment: ${response.status}`);
-                return response.json();
-            })
-            .then(data => {
-                if (data.success) {
-                    // Clear the comment form
-                    document.getElementById('comment-content').value = '';
-                    
-                    // Reload comments to show the new one
-                    loadComments(postId);
-                    
-                    // Update post's comment count in the main view
-                    const commentButton = document.querySelector(`.view-comments-btn[data-id="${postId}"] .comment-count`);
-                    if (commentButton) {
-                        const currentCount = parseInt(commentButton.textContent) || 0;
-                        commentButton.textContent = currentCount + 1;
-                    }
-                } else {
-                    alert(`Failed to add comment: ${data.message}`);
-                }
-            })
-            .catch(error => {
-                console.error('Error adding comment:', error);
-                alert('An error occurred while adding your comment. Please try again.');
-            });
-        }
+    .catch(error => {
         console.error('Error during logout:', error);
         alert('Logout failed. Please try again or refresh the page.');
     });
