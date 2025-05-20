@@ -214,6 +214,48 @@ func (d *Database) AuthenticateUser(nickname, email, password string) (*User, er
 	}, nil
 }
 
+// GetPostByID retrieves a specific post by its ID
+func (db *Database) GetPostByID(postID int) (*Post, error) {
+	var post Post
+	var createdAtStr, updatedAtStr string
+
+	err := db.DB.QueryRow(`
+		SELECT p.id, p.title, p.content, p.user_id, p.category_id, c.name, u.nickname, p.created_at, p.updated_at
+		FROM posts p
+		JOIN users u ON p.user_id = u.id
+		JOIN categories c ON p.category_id = c.id
+		WHERE p.id = ?
+	`, postID).Scan(
+		&post.ID,
+		&post.Title,
+		&post.Content,
+		&post.UserID,
+		&post.CategoryID,
+		&post.Category,
+		&post.Author,
+		&createdAtStr,
+		&updatedAtStr,
+	)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("post not found")
+		}
+		return nil, fmt.Errorf("failed to query post by ID: %w", err)
+	}
+
+	post.CreatedAt, err = time.Parse(time.RFC3339, createdAtStr)
+	if err != nil {
+		post.CreatedAt = time.Now()
+	}
+	post.UpdatedAt, err = time.Parse(time.RFC3339, updatedAtStr)
+	if err != nil {
+		post.UpdatedAt = time.Now()
+	}
+
+	return &post, nil
+}
+
 // CreatePost creates a new post with a category
 func (d *Database) CreatePost(userID int, categoryID int, title, content string) error {
 	_, err := d.DB.Exec(
