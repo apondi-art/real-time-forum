@@ -4,12 +4,12 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 
 	"real-time-forum/internals/database"
 	"real-time-forum/internals/handlers"
 
-	"github.com/gorilla/mux"
-	_ "github.com/mattn/go-sqlite3" // Import SQLite driver
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func main() {
@@ -21,46 +21,66 @@ func main() {
 	}
 	defer db.Close()
 
-	// Initialize handlers with the database connection
 	handler := handlers.NewHandler(db)
 
-	// Create a new router
-	r := mux.NewRouter()
-
 	// Serve static files
-	r.PathPrefix("/static/").Handler(http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
-	// API Routes
-	r.HandleFunc("/api/register", handler.Register).Methods("POST")
-	r.HandleFunc("/api/login", handler.Login).Methods("POST")
-	r.HandleFunc("/api/categories", handler.GetCategories).Methods("GET")
-	r.HandleFunc("/api/home", handler.Home).Methods("GET")
+	// API routes
+	http.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		apiRouter(w, r, handler)
+	})
 
-	// Post routes
-	r.HandleFunc("/api/posts", handler.GetPosts).Methods("GET")
-	r.HandleFunc("/api/posts", handler.CreatePost).Methods("POST")
-	r.HandleFunc("/api/posts/{id}", handler.GetPosts).Methods("GET") // Route for specific post
-
-	// Comment routes under a specific post
-	r.HandleFunc("/api/posts/{postId}/comments", handler.GetComments).Methods("GET")
-	r.HandleFunc("/api/posts/{postId}/comments", handler.AddComment).Methods("POST")
-
-	r.HandleFunc("/api/logout", handler.Logout).Methods("POST")
-
-	// User status routes
-	r.HandleFunc("/api/online-users", handler.GetOnlineUsers).Methods("GET")
-	r.HandleFunc("/api/online-status", handler.UpdateOnlineStatus).Methods("POST")
-
-	// Serve the index.html for other routes (SPA handling)
-	r.PathPrefix("/").HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Serve SPA fallback (for React/Vue apps etc.)
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.ServeFile(w, r, "./template/index.html")
 	})
 
-	// Start the server
 	port := "8080"
 	log.Printf("Server listening on port %s", port)
-	err = http.ListenAndServe(":"+port, r) // Use the router
+	err = http.ListenAndServe(":"+port, nil)
 	if err != nil {
 		log.Fatalf("ListenAndServe error: %v", err)
+	}
+}
+
+func apiRouter(w http.ResponseWriter, r *http.Request, h *handlers.Handler) {
+	path := strings.TrimPrefix(r.URL.Path, "/api")
+	method := r.Method
+
+	switch {
+	case path == "/register" && method == http.MethodPost:
+		h.Register(w, r)
+	case path == "/login" && method == http.MethodPost:
+		h.Login(w, r)
+	case path == "/categories" && method == http.MethodGet:
+		h.GetCategories(w, r)
+	case path == "/home" && method == http.MethodGet:
+		h.Home(w, r)
+	case path == "/posts" && method == http.MethodGet:
+		h.GetPosts(w, r)
+	case path == "/posts" && method == http.MethodPost:
+		h.CreatePost(w, r)
+	case strings.HasPrefix(path, "/posts/") && strings.HasSuffix(path, "/comments"):
+		parts := strings.Split(path, "/")
+		if len(parts) >= 3 {
+			postID := parts[2]
+			if method == http.MethodGet {
+				h.GetComments(w, r, postID)
+			} else if method == http.MethodPost {
+				h.AddComment(w, r, postID)
+			}
+		}
+	case strings.HasPrefix(path, "/posts/") && method == http.MethodGet:
+		postID := strings.TrimPrefix(path, "/posts/")
+		h.GetPostByID(w, r, postID)
+	case path == "/logout" && method == http.MethodPost:
+		h.Logout(w, r)
+	case path == "/online-users" && method == http.MethodGet:
+		h.GetOnlineUsers(w, r)
+	case path == "/online-status" && method == http.MethodPost:
+		h.UpdateOnlineStatus(w, r)
+	default:
+		http.NotFound(w, r)
 	}
 }
