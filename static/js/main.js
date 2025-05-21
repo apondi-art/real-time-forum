@@ -6,7 +6,12 @@ function loadMainApplication() {
         <div class="main-container">
             <header>
                 <h1>Forum</h1>
-                <button id="logout-btn">Logout</button>
+                <div class="header-icons">
+                    <button id="notification-icon" class="icon-button">
+                        <i class="fas fa-bell"></i> <span class="notification-badge" style="display: none;"></span>
+                    </button>
+                    <button id="logout-btn">Logout</button>
+                </div>
             </header>
             
             <section id="create-post-button-section" class="forum-section">
@@ -61,6 +66,19 @@ function loadMainApplication() {
                     <div id="users-list"></div>
                 </section>
             </div>
+
+            <div id="chat-window" class="chat-window" style="display: none;">
+                <div class="chat-header">
+                    <h3 id="chat-header-title">Chat</h3>
+                    <button class="close-chat-btn">&times;</button>
+                </div>
+                <div class="chat-messages" id="chat-messages">
+                    </div>
+                <form id="chat-form" class="chat-input-form">
+                    <input type="text" id="chat-input" placeholder="Type a message..." autocomplete="off">
+                    <button type="submit">Send</button>
+                </form>
+            </div>
         </div>
     `;
 
@@ -89,6 +107,24 @@ function loadMainApplication() {
 
     // Setup global error handling
     setupGlobalErrorHandling();
+
+    // Event listener for notification icon
+    document.getElementById('notification-icon').addEventListener('click', () => {
+        // This will be expanded to open a messages/notifications panel
+        alert('Notifications clicked! (Feature to be implemented)');
+        // For now, let's assume clicking it clears the badge
+        updateNotificationBadge(0); 
+    });
+
+    // Event listeners for chat window
+    document.querySelector('.close-chat-btn').addEventListener('click', () => {
+        document.getElementById('chat-window').style.display = 'none';
+    });
+
+    document.getElementById('chat-form').addEventListener('submit', handleSendMessage);
+
+    // Simulate a new notification
+    setTimeout(() => updateNotificationBadge(3), 5000); 
 }
 
 // Token validation functions 
@@ -577,6 +613,7 @@ function loadOnlineUsers() {
             }
             
             container.innerHTML = html;
+            addChatIconListeners(); // Add listeners after users are loaded
         })
         .catch(error => {
             console.error('Error loading users:', error);
@@ -587,14 +624,19 @@ function loadOnlineUsers() {
 
 function createUserElement(user) {
     const lastSeen = user.lastSeen ? formatLastSeen(user.lastSeen) : '';
+    const userId = localStorage.getItem('user_id'); // Get the current user's ID
+    const isCurrentUser = (userId && parseInt(userId) === user.id); // Check if it's the current user
+    
     return `
-        <div class="user ${user.online ? 'online' : 'offline'}" data-id="${user.id}">
+        <div class="user ${user.online ? 'online' : 'offline'}" data-id="${user.id}" data-username="${user.nickname}">
             <div class="user-info">
                 <div class="user-name">${user.nickname}</div>
                 <div class="user-status">
                     ${user.online ? 'Online' : `Last seen ${lastSeen}`}
                 </div>
             </div>
+            ${!isCurrentUser ? `<button class="chat-user-icon" data-id="${user.id}" data-username="${user.nickname}">
+                <i class="fas fa-comment-dots"></i> </button>` : ''}
         </div>
     `;
 }
@@ -675,6 +717,142 @@ function handleLogout() {
         console.error('Error during logout:', error);
         alert('Logout failed. Please try again or refresh the page.');
     });
+}
+
+// --- Chat Functionality (New) ---
+
+let currentChatRecipientId = null;
+let currentChatRecipientUsername = null;
+
+function addChatIconListeners() {
+    document.querySelectorAll('.chat-user-icon').forEach(button => {
+        button.addEventListener('click', (event) => {
+            event.stopPropagation(); // Prevent clicking on the user div from triggering other actions
+            const userId = event.currentTarget.dataset.id;
+            const username = event.currentTarget.dataset.username;
+            openChatWindow(userId, username);
+        });
+    });
+}
+
+function openChatWindow(recipientId, recipientUsername) {
+    const chatWindow = document.getElementById('chat-window');
+    const chatHeaderTitle = document.getElementById('chat-header-title');
+    const chatMessagesContainer = document.getElementById('chat-messages');
+
+    currentChatRecipientId = recipientId;
+    currentChatRecipientUsername = recipientUsername;
+    chatHeaderTitle.textContent = `Chat with ${recipientUsername}`;
+    chatMessagesContainer.innerHTML = '<p>Loading messages...</p>'; // Clear and show loading
+
+    chatWindow.style.display = 'block';
+    loadChatMessages(recipientId);
+}
+
+function loadChatMessages(recipientId) {
+    const token = localStorage.getItem('forum_token');
+    if (!token) {
+        handleInvalidToken();
+        return;
+    }
+
+    fetch(`/api/chat/messages?recipientId=${recipientId}`, {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Failed to load chat messages: ${response.status}`);
+        return response.json();
+    })
+    .then(messages => {
+        const chatMessagesContainer = document.getElementById('chat-messages');
+        chatMessagesContainer.innerHTML = ''; // Clear loading message
+
+        if (messages.length === 0) {
+            chatMessagesContainer.innerHTML = '<p>No messages yet. Start the conversation!</p>';
+            return;
+        }
+
+        const currentUserId = parseInt(localStorage.getItem('user_id'));
+
+        messages.forEach(msg => {
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('chat-message');
+            messageElement.classList.add(msg.sender_id === currentUserId ? 'sent' : 'received');
+            
+            messageElement.innerHTML = `
+                <div class="message-content">${msg.content}</div>
+                <div class="message-meta">
+                    <span class="message-sender">${msg.sender_username || 'Unknown'}</span>
+                    <span class="message-time">${formatChatTime(msg.created_at)}</span>
+                </div>
+            `;
+            chatMessagesContainer.appendChild(messageElement);
+        });
+        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight; // Scroll to bottom
+    })
+    .catch(error => {
+        console.error('Error loading chat messages:', error);
+        document.getElementById('chat-messages').innerHTML = `<p class="error">Failed to load messages: ${error.message}</p>`;
+    });
+}
+
+function handleSendMessage(event) {
+    event.preventDefault();
+    const chatInput = document.getElementById('chat-input');
+    const content = chatInput.value.trim();
+
+    if (!content || !currentChatRecipientId) {
+        return;
+    }
+
+    const token = localStorage.getItem('forum_token');
+    if (!token) {
+        handleInvalidToken();
+        return;
+    }
+
+    fetch('/api/chat/send', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ recipientId: currentChatRecipientId, content })
+    })
+    .then(response => {
+        if (!response.ok) throw new Error(`Failed to send message: ${response.status}`);
+        return response.json();
+    })
+    .then(data => {
+        if (data.success) {
+            chatInput.value = ''; // Clear input
+            loadChatMessages(currentChatRecipientId); // Reload messages to show the new one
+        } else {
+            alert(`Failed to send message: ${data.message}`);
+        }
+    })
+    .catch(error => {
+        console.error('Error sending message:', error);
+        alert('An error occurred while sending your message.');
+    });
+}
+
+function updateNotificationBadge(count) {
+    const badge = document.querySelector('.notification-badge');
+    if (count > 0) {
+        badge.textContent = count;
+        badge.style.display = 'block';
+    } else {
+        badge.textContent = '';
+        badge.style.display = 'none';
+    }
+}
+
+function formatChatTime(timestamp) {
+    const date = new Date(timestamp);
+    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
 window.loadMainApplication = loadMainApplication;
