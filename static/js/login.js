@@ -48,25 +48,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function renderLoginPage() {
     document.getElementById('app').innerHTML = `
-        <div class="login-container">
-            <h1>Forum Login</h1>
-            <form id="loginForm">
-                <div class="form-group">
-                    <label for="username">Nickname or Email</label>
-                    <input type="text" id="username" required>
-                </div>
-                <div class="form-group">
-                    <label for="password">Password</label>
-                    <input type="password" id="password" required>
-                </div>
-                <button type="submit" class="btn">Login</button>
-                <div id="errorMessage" class="error-message" style="display: none;"></div>
-            </form>
-            <div class="links">
-                <a href="#" id="registerLink">Create account</a>
+    <div class="login-container">
+        <h1>Welcome Back</h1>
+        <form id="loginForm">
+            <div class="form-group">
+                <label for="username">Nickname or Email</label>
+                <input type="text" id="username" required placeholder="Enter your nickname or email">
             </div>
+            
+            <div class="form-group">
+                <label for="password">Password</label>
+                <input type="password" id="password" required placeholder="Enter your password">
+            </div>
+            
+            <button type="submit" class="btn">Sign In</button>
+            <div id="errorMessage" class="error-message" style="display: none;"></div>
+        </form>
+        
+        <div class="links">
+            <p>Don't have an account? <a href="#" id="registerLink">Register now</a></p>
         </div>
-    `;
+    </div>
+`;
 }
 
 // Fixed frontend login function
