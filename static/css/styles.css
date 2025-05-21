@@ -620,3 +620,218 @@
     margin-bottom: 20px;
   }
 }
+
+
+
+/* Header Icons */
+.header-icons {
+  display: flex;
+  align-items: center;
+  gap: 15px; /* Space between icons and logout button */
+}
+
+.icon-button {
+  background: none;
+  border: none;
+  font-size: 24px; /* Adjust size as needed */
+  cursor: pointer;
+  color: white; /* Or your preferred icon color */
+  position: relative; /* For notification badge positioning */
+  padding: 0;
+}
+
+.icon-button:hover {
+  color: #eee;
+}
+
+.notification-badge {
+  position: absolute;
+  top: -5px;
+  right: -10px;
+  background-color: #ff0000; /* Red badge */
+  color: white;
+  border-radius: 50%;
+  padding: 3px 7px;
+  font-size: 12px;
+  min-width: 10px;
+  text-align: center;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Chat Icon next to Username */
+.user-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* Pushes chat icon to the right */
+  flex-grow: 1; /* Allows user-info to take available space */
+}
+
+.user {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #ddd;
+  background-color: #f9f9f9;
+  transition: background-color 0.2s ease;
+  cursor: pointer; /* Indicate it's clickable */
+}
+
+.user:hover {
+  background-color: #e0e0e0;
+}
+
+.user.online .user-name {
+  font-weight: bold;
+  color: #28a745; /* Green for online */
+}
+
+.user.offline .user-name {
+  color: #6c757d; /* Gray for offline */
+}
+
+.chat-user-icon {
+  background: none;
+  border: none;
+  font-size: 18px; /* Adjust size */
+  cursor: pointer;
+  color: #007bff; /* Blue for chat icon */
+  margin-left: 10px; /* Space from username */
+  padding: 5px;
+  border-radius: 5px;
+}
+
+.chat-user-icon:hover {
+  background-color: #e7f4ff;
+}
+
+/* Chat Window Styles */
+.chat-window {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 350px;
+  height: 450px;
+  background-color: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  flex-direction: column;
+  z-index: 1000; /* Ensure it's above other content */
+  overflow: hidden;
+}
+
+.chat-header {
+  background-color: #007bff;
+  color: white;
+  padding: 10px 15px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+}
+
+.chat-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.close-chat-btn {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.close-chat-btn:hover {
+  color: #f0f0f0;
+}
+
+.chat-messages {
+  flex-grow: 1;
+  padding: 15px;
+  overflow-y: auto;
+  background-color: #f0f2f5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.chat-message {
+  max-width: 80%;
+  padding: 8px 12px;
+  border-radius: 15px;
+  line-height: 1.4;
+  word-wrap: break-word;
+}
+
+.chat-message.sent {
+  align-self: flex-end;
+  background-color: #dcf8c6; /* Light green for sent messages */
+  color: #333;
+  border-bottom-right-radius: 2px;
+}
+
+.chat-message.received {
+  align-self: flex-start;
+  background-color: #e5e5ea; /* Light gray for received messages */
+  color: #333;
+  border-bottom-left-radius: 2px;
+}
+
+.message-content {
+  font-size: 15px;
+}
+
+.message-meta {
+  font-size: 11px;
+  color: #666;
+  margin-top: 3px;
+  text-align: right; /* Time aligns to the right within the message bubble */
+}
+
+.message-sender {
+  font-weight: bold;
+  display: block; /* Puts sender on its own line */
+}
+
+.message-time {
+  margin-left: 5px;
+}
+
+
+.chat-input-form {
+  display: flex;
+  padding: 10px 15px;
+  border-top: 1px solid #eee;
+  background-color: #fff;
+}
+
+.chat-input-form input[type="text"] {
+  flex-grow: 1;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 20px;
+  margin-right: 10px;
+  font-size: 14px;
+}
+
+.chat-input-form button {
+  background-color: #007bff;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.2s ease;
+}
+
+.chat-input-form button:hover {
+  background-color: #0056b3;
+}
