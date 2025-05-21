@@ -642,3 +642,37 @@ func (db *Database) GetUserByID(userID int) (*User, error) {
 	return &user, nil
 }
 
+
+
+func (db *Database) StoreSession(userID int, token string, expiresAt time.Time) error {
+    _, err := db.DB.Exec("INSERT INTO sessions (user_id, token, expires_at) VALUES (?, ?, ?)", userID, token, expiresAt)
+    return err
+}
+
+// Delete all sessions for a user (used to enforce single session)
+func (db *Database) DeleteSessionsForUser(userID int) error {
+    _, err := db.DB.Exec("DELETE FROM sessions WHERE user_id = ?", userID)
+    return err
+}
+
+// Delete a specific session by token (used for logout)
+func (db *Database) DeleteSessionByToken(token string) error {
+    _, err := db.DB.Exec("DELETE FROM sessions WHERE token = ?", token)
+    return err
+}
+
+// Check if a token is valid (exists in DB and not expired)
+func (db *Database) IsTokenValid(token string) (bool, error) {
+    var expiresAt time.Time
+    err := db.DB.QueryRow("SELECT expires_at FROM sessions WHERE token = ?", token).Scan(&expiresAt)
+    if err != nil {
+        return false, err
+    }
+    if expiresAt.Before(time.Now()) {
+        return false, nil
+    }
+    return true, nil
+}
+	
+
+
