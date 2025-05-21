@@ -1,54 +1,64 @@
 function renderRegistrationForm(){
     document.getElementById('app').innerHTML = `
      <div class="register-container">
-            <h1>Create Account</h1>
+            <h1>Create Your Account</h1>
             <form id="registerForm">
                 <div class="form-group">
                     <label for="nickname">Nickname</label>
-                    <input type="text" id="nickname" required>
+                    <input type="text" id="nickname" required placeholder="Choose a display name">
                 </div>
-                <div class="form-group">
-                    <label for="age">Age</label>
-                    <input type="number" id="age" min="13" required>
+                
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1; margin-right: 15px;">
+                        <label for="age">Age</label>
+                        <input type="number" id="age" min="13" required placeholder="Your age">
+                    </div>
+                    <div class="form-group" style="flex: 2;">
+                        <label for="gender">Gender</label>
+                        <select id="gender" required>
+                            <option value="">Select gender</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                            <option value="prefer-not-to-say">Prefer not to say</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="gender">Gender</label>
-                    <select id="gender" required>
-                        <option value="">Select gender</option>
-                        <option value="male">Male</option>
-                        <option value="female">Female</option>
-                        <option value="other">Other</option>
-                        <option value="prefer-not-to-say">Prefer not to say</option>
-                    </select>
+                
+                <div class="form-row">
+                    <div class="form-group" style="flex: 1; margin-right: 15px;">
+                        <label for="firstName">First Name</label>
+                        <input type="text" id="firstName" required placeholder="Your first name">
+                    </div>
+                    <div class="form-group" style="flex: 1;">
+                        <label for="lastName">Last Name</label>
+                        <input type="text" id="lastName" required placeholder="Your last name">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <label for="firstName">First Name</label>
-                    <input type="text" id="firstName" required>
-                </div>
-                <div class="form-group">
-                    <label for="lastName">Last Name</label>
-                    <input type="text" id="lastName" required>
-                </div>
+                
                 <div class="form-group">
                     <label for="email">Email</label>
-                    <input type="email" id="email" required>
+                    <input type="email" id="email" required placeholder="your@email.com">
                 </div>
+                
                 <div class="form-group">
                     <label for="registerPassword">Password</label>
-                    <input type="password" id="registerPassword" required>
+                    <input type="password" id="registerPassword" required placeholder="Create a password">
                 </div>
+                
                 <div class="form-group">
                     <label for="confirmPassword">Confirm Password</label>
-                    <input type="password" id="confirmPassword" required>
+                    <input type="password" id="confirmPassword" required placeholder="Repeat your password">
                 </div>
-                <button type="submit" class="btn">Register</button>
+                
+                <button type="submit" class="btn">Create Account</button>
                 <div id="registerError" class="error-message" style="display: none;"></div>
             </form>
+            
             <div class="links">
-                <a href="#" id="loginLink">Already have an account? Login</a>
+                <p>Already have an account? <a href="#" id="loginLink">Sign in</a></p>
             </div>
         </div>
-
     `;  // Handle registration form submission
     document.getElementById('registerForm').addEventListener('submit', function(e) {
         e.preventDefault();

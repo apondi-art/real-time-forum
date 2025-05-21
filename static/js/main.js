@@ -1,3 +1,6 @@
+// Global variable for token check interval
+let tokenCheckInterval;
+
 function loadMainApplication() {
     document.getElementById('app').innerHTML = `
         <div class="main-container">
@@ -78,7 +81,106 @@ function loadMainApplication() {
     // Add beforeunload event to mark user as offline when leaving
     window.addEventListener('beforeunload', () => {
         updateOnlineStatus(false);
+        clearInterval(tokenCheckInterval);
     });
+    
+    // Start token validation
+    startTokenValidation();
+
+    // Setup global error handling
+    setupGlobalErrorHandling();
+}
+
+// Token validation functions 
+function startTokenValidation() {
+    setTimeout(() => {
+        checkTokenValidity();
+        // set regular interval checks
+        tokenCheckInterval = setInterval(checkTokenValidity, 5 * 60 * 1000);
+    }, 2000); // 2-second delay before first check
+}
+
+function checkTokenValidity() {
+    const token = localStorage.getItem('forum_token');
+    if (!token) return;
+
+    fetch('/api/validate-token', {
+        headers: {
+            'Authorization': `Bearer ${token}`
+        }
+    })
+    .then(response => {
+        // Only invalidate on specific unauthorized responses (401)
+        // Other error codes (like 500, 502, etc.) should be treated as temporary server issues
+        if (response.status === 401) {
+            clearInterval(tokenCheckInterval);
+            handleInvalidToken();
+        }
+        // For server errors, log but don't invalidate token
+        else if (!response.ok) {
+            console.warn('Token validation server error:', response.status);
+            // Don't invalidate on server errors
+        }
+    })
+    .catch(error => {
+        // For network errors, just log the error but don't invalidate the token
+        // This prevents users from being logged out due to temporary connection issues
+        console.error('Token validation network error:', error);
+        // Don't invalidate on network errors
+    });
+}
+
+function handleInvalidToken() {
+    // Add some debug logging
+    console.log('Token invalidated. Logging out user.');
+    
+    // Add a check to prevent multiple logout attempts
+    if (!localStorage.getItem('forum_token')) {
+        console.log('Already logged out. Skipping additional logout.');
+        return;
+    }
+    
+    // Clear all user data
+    localStorage.removeItem('forum_token');
+    localStorage.removeItem('user_id');
+    localStorage.removeItem('username');
+    
+    // Show a message to the user
+    alert('Your session has expired. Please log in again.');
+    
+    // Redirect to login page
+    window.location.href = '/';
+}
+
+function setupGlobalErrorHandling() {
+    // Intercept fetch calls to check for 401 errors
+    const originalFetch = window.fetch;
+    
+    window.fetch = async function(...args) {
+        try {
+            const response = await originalFetch(...args);
+            
+            // Only treat actual 401 responses as token invalidation events
+            if (response.status === 401) {
+                // Check if this is a token validation endpoint
+                const url = args[0] instanceof Request ? args[0].url : args[0];
+                
+                // Unauthorized - token is invalid
+                clearInterval(tokenCheckInterval);
+                handleInvalidToken();
+                return Promise.reject(new Error('Unauthorized'));
+            }
+            
+            return response;
+        } catch (error) {
+            // Only handle actual unauthorized errors, not network failures
+            if (error.message === 'Unauthorized') {
+                clearInterval(tokenCheckInterval);
+                handleInvalidToken();
+            }
+            return Promise.reject(error);
+        }
+    };
 }
 
 function toggleCreatePostForm() {
@@ -112,17 +214,16 @@ function toggleCreatePostForm() {
 function handleCreatePost(event) {
     event.preventDefault(); // Prevent default form submission
 
+    const token = localStorage.getItem('forum_token');
+    if (!token) {
+        handleInvalidToken();
+        return;
+    }
+
     const title = document.getElementById('post-title').value;
     const content = document.getElementById('post-content').value;
     const category = document.getElementById('post-category').value;
     const messageDiv = document.getElementById('post-creation-message');
-    const token = localStorage.getItem('forum_token'); // Use correct token key
-
-    if (!token) {
-        messageDiv.textContent = 'You must be logged in to create a post.';
-        messageDiv.className = 'message error';
-        return;
-    }
 
     if (!category) {
         messageDiv.textContent = 'Please select a category for your post.';
@@ -166,6 +267,7 @@ function handleCreatePost(event) {
         }
     })
     .catch(error => {
+        if (error.message === 'Unauthorized') return;
         console.error('Error creating post:', error);
         messageDiv.textContent = 'An error occurred while creating the post.';
         messageDiv.className = 'message error';
@@ -214,7 +316,11 @@ function loadCategories() {
 }
 
 function loadPosts(categoryId = null) {
-    const token = localStorage.getItem('forum_token'); // Use consistent token name
+    const token = localStorage.getItem('forum_token');
+    if (!token) {
+        handleInvalidToken();
+        return;
+    }
     
     // Build URL with query parameter if categoryId is provided
     let url = '/api/posts';
@@ -307,6 +413,7 @@ function loadPosts(categoryId = null) {
         });
     })
     .catch(error => {
+        if (error.message.includes('Unauthorized')) return;
         console.error('Error loading posts:', error);
         document.getElementById('posts-feed').innerHTML = 
             `<p class="error">Failed to load posts: ${error.message}</p>`;
@@ -336,6 +443,11 @@ function viewPostDetails(postId) {
 // Function to load comments for a specific post
 function loadComments(postId) {
     const token = localStorage.getItem('forum_token');
+    if (!token) {
+        handleInvalidToken();
+        return;
+    }
+    
     const commentsContainer = document.getElementById(`comments-container-${postId}`);
     
     fetch(`/api/posts/${postId}/comments`, {
@@ -364,6 +476,7 @@ function loadComments(postId) {
         `).join('');
     })
     .catch(error => {
+        if (error.message.includes('Unauthorized')) return;
         console.error('Error loading comments:', error);
         commentsContainer.innerHTML = `<p class="error">Failed to load comments: ${error.message}</p>`;
     });
@@ -374,7 +487,7 @@ function addComment(postId, content, form) {
     const token = localStorage.getItem('forum_token');
     
     if (!token) {
-        alert('You must be logged in to comment.');
+        handleInvalidToken();
         return;
     }
     
@@ -407,6 +520,7 @@ function addComment(postId, content, form) {
         }
     })
     .catch(error => {
+        if (error.message.includes('Unauthorized')) return;
         console.error('Error adding comment:', error);
         alert('An error occurred while adding your comment. Please try again.');
     });
@@ -435,85 +549,6 @@ function loadOnlineUsers() {
             
             if (!users || !Array.isArray(users) || users.length === 0) {
                 container.innerHTML = '<div>No users online</div>';
-                return;
-            }
-            
-            container.innerHTML = users.map(user => `
-                <div class="user" data-id="${user.id}">
-                    ${user.username} 
-                    <span class="status ${user.online ? 'online' : 'offline'}"></span>
-                </div>
-            `).join('');
-        })
-        .catch(error => {
-            console.error('Error loading online users:', error);
-            document.getElementById('users-list').innerHTML = 
-                `<div class="error">Failed to load online users</div>`;
-        });
-}
-
-// Logout handler
-function handleLogout() {
-    const token = localStorage.getItem('forum_token'); 
-    
-    if (!token) {
-        console.log('No token found, already logged out');
-        window.location.href = '/';
-        return;
-    }
-    
-    fetch('/api/logout', { 
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}` // Include token in header
-        }
-    })
-    .then(response => {
-        // Handle non-JSON responses gracefully
-        if (response.ok) {
-            try {
-                return response.json();
-            } catch (e) {
-                return { success: true }; // Assume success if server returned 200 OK
-            }
-        } else {
-            console.error('Logout request failed with status:', response.status);
-            return { success: false, message: 'Server returned error status: ' + response.status };
-        }
-    })
-    .then(data => {
-        // Clear all user data regardless of server response
-        localStorage.removeItem('forum_token');
-        localStorage.removeItem('user_id');
-        localStorage.removeItem('username');
-        
-        console.log('Logout complete, redirecting to login page');
-        
-        // Force page reload to ensure clean application state
-        window.location.reload();
-    })
-    .catch(error => {
-        console.error('Error during logout:', error);
-        alert('Logout failed. Please try again or refresh the page.');
-    });
-}
-
-
-
-// Enhanced loadOnlineUsers function
-function loadOnlineUsers() {
-    fetch('/api/online-users')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`Failed to load users: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(users => {
-            const container = document.getElementById('users-list');
-            
-            if (!users || !Array.isArray(users) || users.length === 0) {
-                container.innerHTML = '<div>No users found</div>';
                 return;
             }
             
@@ -578,6 +613,68 @@ function formatLastSeen(timestamp) {
         const diffDays = Math.floor(diffHours / 24);
         return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
     }
+}
+
+// Update online status
+function updateOnlineStatus(online) {
+    const token = localStorage.getItem('forum_token');
+    if (!token) return;
+
+    fetch('/api/online-status', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ online }),
+    }).catch(err => console.error('Error updating status:', err));
+}
+
+// Logout handler
+function handleLogout() {
+    clearInterval(tokenCheckInterval);
+    const token = localStorage.getItem('forum_token'); 
+    
+    if (!token) {
+        console.log('No token found, already logged out');
+        window.location.href = '/';
+        return;
+    }
+    
+    fetch('/api/logout', { 
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}` // Include token in header
+        }
+    })
+    .then(response => {
+        // Handle non-JSON responses gracefully
+        if (response.ok) {
+            try {
+                return response.json();
+            } catch (e) {
+                return { success: true }; // Assume success if server returned 200 OK
+            }
+        } else {
+            console.error('Logout request failed with status:', response.status);
+            return { success: false, message: 'Server returned error status: ' + response.status };
+        }
+    })
+    .then(data => {
+        // Clear all user data regardless of server response
+        localStorage.removeItem('forum_token');
+        localStorage.removeItem('user_id');
+        localStorage.removeItem('username');
+        
+        console.log('Logout complete, redirecting to login page');
+        
+        // Force page reload to ensure clean application state
+        window.location.reload();
+    })
+    .catch(error => {
+        console.error('Error during logout:', error);
+        alert('Logout failed. Please try again or refresh the page.');
+    });
 }
 
 window.loadMainApplication = loadMainApplication;
