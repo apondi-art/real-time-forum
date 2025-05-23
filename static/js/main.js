@@ -86,6 +86,7 @@ function loadMainApplication() {
     loadCategories();
     loadPosts();
     loadOnlineUsers();
+    connectWebSocket();
 
     // Add event listeners
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
@@ -126,6 +127,54 @@ function loadMainApplication() {
     // Simulate a new notification
     setTimeout(() => updateNotificationBadge(3), 5000); 
 }
+
+
+let ws;
+
+function connectWebSocket() {
+    const token = localStorage.getItem('forum_token');
+    if (!token) return;
+
+    const protocol = location.protocol === 'https:' ? 'wss' : 'ws';
+    ws = new WebSocket(`${protocol}://${location.host}/api/chat/ws`, [token]);
+
+    ws.onopen = () => {
+        console.log('WebSocket connected');
+    };
+
+    ws.onmessage = (event) => {
+        const data = event.data;
+        try {
+            const messageObj = JSON.parse(data);
+            appendChatMessage(messageObj); // Update UI with received message
+        } catch {
+            console.warn('Invalid WebSocket message:', data);
+        }
+    };
+
+    ws.onclose = () => {
+        console.log('WebSocket closed, retrying in 3 seconds...');
+        setTimeout(connectWebSocket, 3000);
+    };
+
+    ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+    };
+}
+
+
+
+function appendChatMessage(message) {
+    const chatMessages = document.getElementById('chat-messages');
+
+    const msgDiv = document.createElement('div');
+    msgDiv.classList.add('chat-message');
+    msgDiv.textContent = message.content || '[No Content]';
+    chatMessages.appendChild(msgDiv);
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+
 
 // Token validation functions 
 function startTokenValidation() {
@@ -813,31 +862,25 @@ function handleSendMessage(event) {
         return;
     }
 
-    fetch('/api/chat/send', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({ recipientId: currentChatRecipientId, content })
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`Failed to send message: ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
+    // Make sure the WebSocket is open
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const messagePayload = {
+            recipientId: currentChatRecipientId,
+            content: content
+        };
+
+        try {
+            ws.send(JSON.stringify(messagePayload));
             chatInput.value = ''; // Clear input
-            loadChatMessages(currentChatRecipientId); // Reload messages to show the new one
-        } else {
-            alert(`Failed to send message: ${data.message}`);
+        } catch (err) {
+            console.error('WebSocket send error:', err);
+            alert('Failed to send message via WebSocket.');
         }
-    })
-    .catch(error => {
-        console.error('Error sending message:', error);
-        alert('An error occurred while sending your message.');
-    });
+    } else {
+        alert('WebSocket connection is not open. Try again later.');
+    }
 }
+
 
 function updateNotificationBadge(count) {
     const badge = document.querySelector('.notification-badge');
