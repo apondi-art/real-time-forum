@@ -87,6 +87,9 @@ func apiRouter(w http.ResponseWriter, r *http.Request, h *handlers.Handler) {
 		h.UpdateOnlineStatus(w, r)
 	case path == "/chat/ws" && method == http.MethodGet:
 		h.HandleChatWebSocket(w, r)
+	case path == "/validate-token" && method == http.MethodGet:
+		h.ValidateToken(w, r)
+
 	default:
 		http.NotFound(w, r)
 	}
