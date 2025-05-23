@@ -730,26 +730,79 @@ func (db *Database) GetConversation(userID1, userID2 int) ([]Message, error) {
 	return messages, nil
 }
 
-	
+// GetMessagesBetweenUsers retrieves messages between two users
+func (db *Database) GetMessagesBetweenUsers(userID1, userID2 int) ([]Message, error) {
+    rows, err := db.DB.Query(`
+        SELECT m.id, m.sender_id, m.recipient_id, m.content, m.created_at, m.read_at,
+               u1.nickname as sender_username, u2.nickname as recipient_username
+        FROM messages m
+        JOIN users u1 ON m.sender_id = u1.id
+        JOIN users u2 ON m.recipient_id = u2.id
+        WHERE (m.sender_id = ? AND m.recipient_id = ?) OR 
+              (m.sender_id = ? AND m.recipient_id = ?)
+        ORDER BY m.created_at ASC
+    `, userID1, userID2, userID2, userID1)
+    if err != nil {
+        return nil, fmt.Errorf("failed to query messages: %w", err)
+    }
+    defer rows.Close()
+
+    var messages []Message
+    for rows.Next() {
+        var msg Message
+        var readAt sql.NullTime
+        var senderUsername, recipientUsername string
+        
+        err := rows.Scan(
+            &msg.ID,
+            &msg.SenderID,
+            &msg.RecipientID,
+            &msg.Content,
+            &msg.CreatedAt,
+            &readAt,
+            &senderUsername,
+            &recipientUsername,
+        )
+        if err != nil {
+            return nil, fmt.Errorf("failed to scan message: %w", err)
+        }
+        
+        if readAt.Valid {
+            msg.ReadAt = &readAt.Time
+        }
+        
+        // Store usernames in a map or additional fields if needed
+        messages = append(messages, msg)
+    }
+
+    return messages, nil
+}
+
+// MarkMessagesAsRead updates messages as read
 func (db *Database) MarkMessagesAsRead(senderID, recipientID int) error {
-	_, err := db.DB.Exec(`
-		UPDATE messages
-		SET read_at = ?
-		WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
-	`, time.Now(), senderID, recipientID)
-	return err
+    _, err := db.DB.Exec(`
+        UPDATE messages 
+        SET read_at = CURRENT_TIMESTAMP 
+        WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
+    `, senderID, recipientID)
+    return err
 }
 
+// GetUnreadMessageCount returns count of unread messages for a user
 func (db *Database) GetUnreadMessageCount(userID int) (int, error) {
-	var count int
-	err := db.DB.QueryRow(`
-		SELECT COUNT(*) FROM messages
-		WHERE recipient_id = ? AND read_at IS NULL
-	`, userID).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("failed to count unread messages: %w", err)
-	}
-	return count, nil
+    var count int
+    err := db.DB.QueryRow(`
+        SELECT COUNT(*) FROM messages 
+        WHERE recipient_id = ? AND read_at IS NULL
+    `, userID).Scan(&count)
+    return count, err
 }
 
-
+func (db *Database) GetUsername(userID int) (string, error) {
+    var username string
+    err := db.DB.QueryRow("SELECT nickname FROM users WHERE id = ?", userID).Scan(&username)
+    if err != nil {
+        return "", fmt.Errorf("failed to get username: %w", err)
+    }
+    return username, nil
+}
