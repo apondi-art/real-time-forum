@@ -57,6 +57,16 @@ type Comment struct {
 }
 
 
+type Message struct {
+	ID         int
+	SenderID   int
+	RecipientID int
+	Content    string
+	CreatedAt  time.Time
+	ReadAt     *time.Time
+}
+
+
 
 // Initialize the database connection and schema
 func New(dbPath string) (*Database, error) {
@@ -673,6 +683,73 @@ func (db *Database) IsTokenValid(token string) (bool, error) {
     }
     return true, nil
 }
+
+func (db *Database) SendMessage(senderID, recipientID int, content string) (int, error) {
+	result, err := db.DB.Exec(`
+		INSERT INTO messages (sender_id, recipient_id, content, created_at)
+		VALUES (?, ?, ?, ?)
+	`, senderID, recipientID, content, time.Now())
+	if err != nil {
+		return 0, fmt.Errorf("failed to send message: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("failed to get message ID: %w", err)
+	}
+	return int(id), nil
+}
+
+
+
+
+func (db *Database) GetConversation(userID1, userID2 int) ([]Message, error) {
+	rows, err := db.DB.Query(`
+		SELECT id, sender_id, recipient_id, content, created_at, read_at
+		FROM messages
+		WHERE (sender_id = ? AND recipient_id = ?) OR (sender_id = ? AND recipient_id = ?)
+		ORDER BY created_at ASC
+	`, userID1, userID2, userID2, userID1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch conversation: %w", err)
+	}
+	defer rows.Close()
+
+	var messages []Message
+	for rows.Next() {
+		var msg Message
+		var readAt sql.NullTime
+		err := rows.Scan(&msg.ID, &msg.SenderID, &msg.RecipientID, &msg.Content, &msg.CreatedAt, &readAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan message: %w", err)
+		}
+		if readAt.Valid {
+			msg.ReadAt = &readAt.Time
+		}
+		messages = append(messages, msg)
+	}
+	return messages, nil
+}
+
 	
+func (db *Database) MarkMessagesAsRead(senderID, recipientID int) error {
+	_, err := db.DB.Exec(`
+		UPDATE messages
+		SET read_at = ?
+		WHERE sender_id = ? AND recipient_id = ? AND read_at IS NULL
+	`, time.Now(), senderID, recipientID)
+	return err
+}
+
+func (db *Database) GetUnreadMessageCount(userID int) (int, error) {
+	var count int
+	err := db.DB.QueryRow(`
+		SELECT COUNT(*) FROM messages
+		WHERE recipient_id = ? AND read_at IS NULL
+	`, userID).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("failed to count unread messages: %w", err)
+	}
+	return count, nil
+}
 
 
