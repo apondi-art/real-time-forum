@@ -87,22 +87,23 @@ function loadMainApplication() {
     loadPosts();
     loadOnlineUsers();
     connectWebSocket();
+    enhanceMainApplication();
 
     // Add event listeners
     document.getElementById('logout-btn').addEventListener('click', handleLogout);
     document.getElementById('create-post-button').addEventListener('click', toggleCreatePostForm);
     document.getElementById('new-post-form').addEventListener('submit', handleCreatePost);
-    
+
     // Add periodic status updates
     updateOnlineStatus(true);
     setInterval(() => updateOnlineStatus(true), 30000); // Update every 30 seconds
-     
+
     // Add beforeunload event to mark user as offline when leaving
     window.addEventListener('beforeunload', () => {
         updateOnlineStatus(false);
         clearInterval(tokenCheckInterval);
     });
-    
+
     // Start token validation
     startTokenValidation();
 
@@ -114,7 +115,7 @@ function loadMainApplication() {
         // This will be expanded to open a messages/notifications panel
         alert('Notifications clicked! (Feature to be implemented)');
         // For now, let's assume clicking it clears the badge
-        updateNotificationBadge(0); 
+        updateNotificationBadge(0);
     });
 
     // Event listeners for chat window
@@ -125,7 +126,7 @@ function loadMainApplication() {
     document.getElementById('chat-form').addEventListener('submit', handleSendMessage);
 
     // Simulate a new notification
-    setTimeout(() => updateNotificationBadge(3), 5000); 
+    setTimeout(() => updateNotificationBadge(3), 5000);
 }
 
 
@@ -143,12 +144,34 @@ function connectWebSocket() {
     };
 
     ws.onmessage = (event) => {
-        const data = event.data;
         try {
-            const messageObj = JSON.parse(data);
-            appendChatMessage(messageObj); // Update UI with received message
-        } catch {
-            console.warn('Invalid WebSocket message:', data);
+            const message = JSON.parse(event.data);
+            const currentUserId = parseInt(localStorage.getItem('user_id'));
+
+            // Normalize message structure
+            const normalizedMessage = {
+                sender_id: message.senderId || message.sender_id,
+                sender_username: message.senderUsername || message.sender_username,
+                recipient_id: message.recipientId || message.recipient_id,
+                content: message.content,
+                created_at: message.timestamp || message.created_at || new Date().toISOString()
+            };
+
+            // Always show messages in the current chat window
+            if (currentChatRecipientId &&
+                (parseInt(currentChatRecipientId) === normalizedMessage.sender_id ||
+                    parseInt(currentChatRecipientId) === normalizedMessage.recipient_id)) {
+                appendChatMessage(normalizedMessage);
+            }
+            // Show notification for other messages
+            else if (normalizedMessage.sender_id !== currentUserId) {
+                showNewMessageNotification(
+                    normalizedMessage.sender_username || 'Someone',
+                    normalizedMessage.content
+                );
+            }
+        } catch (err) {
+            console.error('Error processing message:', err);
         }
     };
 
@@ -162,19 +185,66 @@ function connectWebSocket() {
     };
 }
 
-
+function showNewMessageNotification(senderUsername, content) {
+    // Ensure we have at least a default username
+    const displayName = senderUsername || 'Another user';
+    console.log(`New message from ${displayName}: ${content}`);
+    
+    // Update notification badge
+    const badge = document.querySelector('.notification-badge');
+    const currentCount = parseInt(badge.textContent || '0');
+    badge.textContent = currentCount + 1;
+    badge.style.display = 'block';
+    
+    // Show browser notification if available
+    if (Notification.permission === 'granted') {
+        new Notification(`New message from ${displayName}`, {
+            body: content.length > 50 ? content.substring(0, 50) + '...' : content
+        });
+    }
+}
 
 function appendChatMessage(message) {
     const chatMessages = document.getElementById('chat-messages');
-
-    const msgDiv = document.createElement('div');
-    msgDiv.classList.add('chat-message');
-    msgDiv.textContent = message.content || '[No Content]';
-    chatMessages.appendChild(msgDiv);
+    const currentUserId = parseInt(localStorage.getItem('user_id'));
+    
+    // Create message element
+    const messageDiv = document.createElement('div');
+    messageDiv.className = message.sender_id === currentUserId ? 'chat-message sent' : 'chat-message received';
+    
+    // Format the timestamp
+    const messageTime = formatChatTime(message.created_at);
+    
+    // Determine display name
+    const displayName = message.sender_id === currentUserId 
+        ? 'You' 
+        : message.sender_username || 'Unknown User';
+    
+    // Build message HTML
+    messageDiv.innerHTML = `
+        <div class="message-content">${message.content || ''}</div>
+        <div class="message-meta">
+            <span class="message-sender">${displayName}</span>
+            <span class="message-time">${messageTime}</span>
+        </div>
+    `;
+    
+    // Append and scroll to bottom
+    chatMessages.appendChild(messageDiv);
     chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
+// Time formatting function
+function formatChatTime(timestamp) {
+    const date = new Date(timestamp);
+    if (isNaN(date.getTime())) return 'Just now';
 
+    return date.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+    });
+}
 
 // Token validation functions 
 function startTokenValidation() {
@@ -194,45 +264,45 @@ function checkTokenValidity() {
             'Authorization': `Bearer ${token}`
         }
     })
-    .then(response => {
-        // Only invalidate on specific unauthorized responses (401)
-        // Other error codes (like 500, 502, etc.) should be treated as temporary server issues
-        if (response.status === 401) {
-            clearInterval(tokenCheckInterval);
-            handleInvalidToken();
-        }
-        // For server errors, log but don't invalidate token
-        else if (!response.ok) {
-            console.warn('Token validation server error:', response.status);
-            // Don't invalidate on server errors
-        }
-    })
-    .catch(error => {
-        // For network errors, just log the error but don't invalidate the token
-        // This prevents users from being logged out due to temporary connection issues
-        console.error('Token validation network error:', error);
-        // Don't invalidate on network errors
-    });
+        .then(response => {
+            // Only invalidate on specific unauthorized responses (401)
+            // Other error codes (like 500, 502, etc.) should be treated as temporary server issues
+            if (response.status === 401) {
+                clearInterval(tokenCheckInterval);
+                handleInvalidToken();
+            }
+            // For server errors, log but don't invalidate token
+            else if (!response.ok) {
+                console.warn('Token validation server error:', response.status);
+                // Don't invalidate on server errors
+            }
+        })
+        .catch(error => {
+            // For network errors, just log the error but don't invalidate the token
+            // This prevents users from being logged out due to temporary connection issues
+            console.error('Token validation network error:', error);
+            // Don't invalidate on network errors
+        });
 }
 
 function handleInvalidToken() {
     // Add some debug logging
     console.log('Token invalidated. Logging out user.');
-    
+
     // Add a check to prevent multiple logout attempts
     if (!localStorage.getItem('forum_token')) {
         console.log('Already logged out. Skipping additional logout.');
         return;
     }
-    
+
     // Clear all user data
     localStorage.removeItem('forum_token');
     localStorage.removeItem('user_id');
     localStorage.removeItem('username');
-    
+
     // Show a message to the user
     alert('Your session has expired. Please log in again.');
-    
+
     // Redirect to login page
     window.location.href = '/';
 }
@@ -240,22 +310,22 @@ function handleInvalidToken() {
 function setupGlobalErrorHandling() {
     // Intercept fetch calls to check for 401 errors
     const originalFetch = window.fetch;
-    
-    window.fetch = async function(...args) {
+
+    window.fetch = async function (...args) {
         try {
             const response = await originalFetch(...args);
-            
+
             // Only treat actual 401 responses as token invalidation events
             if (response.status === 401) {
                 // Check if this is a token validation endpoint
                 const url = args[0] instanceof Request ? args[0].url : args[0];
-                
+
                 // Unauthorized - token is invalid
                 clearInterval(tokenCheckInterval);
                 handleInvalidToken();
                 return Promise.reject(new Error('Unauthorized'));
             }
-            
+
             return response;
         } catch (error) {
             // Only handle actual unauthorized errors, not network failures
@@ -271,7 +341,7 @@ function setupGlobalErrorHandling() {
 function toggleCreatePostForm() {
     const formSection = document.getElementById('create-post-section');
     const createButton = document.getElementById('create-post-button');
-    
+
     if (formSection.style.display === 'none') {
         // Show the form
         formSection.style.display = 'block';
@@ -282,14 +352,14 @@ function toggleCreatePostForm() {
         formSection.style.display = 'none';
         createButton.textContent = 'Create Post';
         createButton.removeAttribute('data-mode');
-        
+
         // Clear any validation messages
         const messageDiv = document.getElementById('post-creation-message');
         if (messageDiv) {
             messageDiv.textContent = '';
             messageDiv.className = 'message';
         }
-        
+
         // Optionally reset the form
         document.getElementById('new-post-form').reset();
     }
@@ -324,39 +394,39 @@ function handleCreatePost(event) {
         },
         body: JSON.stringify({ title, content, category }),
     })
-    .then(response => {
-        if (!response.ok) {
-            return response.json().then(data => {
-                throw new Error(data.message || `Error: ${response.status}`);
-            });
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            messageDiv.textContent = 'Post created successfully!';
-            messageDiv.className = 'message success';
-            
-            // Reset the form
-            document.getElementById('new-post-form').reset();
-            
-            setTimeout(() => {
-                loadPosts(); // Reload the posts
-                loadCategories(); // Reload categories to update counts
-                document.getElementById('create-post-section').style.display = 'none';
-                document.getElementById('create-post-button-section').style.display = 'block';
-            }, 500);
-        } else {
-            messageDiv.textContent = `Failed to create post: ${data.message}`;
+        .then(response => {
+            if (!response.ok) {
+                return response.json().then(data => {
+                    throw new Error(data.message || `Error: ${response.status}`);
+                });
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                messageDiv.textContent = 'Post created successfully!';
+                messageDiv.className = 'message success';
+
+                // Reset the form
+                document.getElementById('new-post-form').reset();
+
+                setTimeout(() => {
+                    loadPosts(); // Reload the posts
+                    loadCategories(); // Reload categories to update counts
+                    document.getElementById('create-post-section').style.display = 'none';
+                    document.getElementById('create-post-button-section').style.display = 'block';
+                }, 500);
+            } else {
+                messageDiv.textContent = `Failed to create post: ${data.message}`;
+                messageDiv.className = 'message error';
+            }
+        })
+        .catch(error => {
+            if (error.message === 'Unauthorized') return;
+            console.error('Error creating post:', error);
+            messageDiv.textContent = 'An error occurred while creating the post.';
             messageDiv.className = 'message error';
-        }
-    })
-    .catch(error => {
-        if (error.message === 'Unauthorized') return;
-        console.error('Error creating post:', error);
-        messageDiv.textContent = 'An error occurred while creating the post.';
-        messageDiv.className = 'message error';
-    });
+        });
 }
 
 // Load categories from backend
@@ -373,7 +443,7 @@ function loadCategories() {
             if (!categories || !Array.isArray(categories)) {
                 throw new Error('Invalid categories data received');
             }
-            
+
             const container = document.getElementById('categories-list');
             if (categories.length === 0) {
                 container.innerHTML = '<div class="category-empty">No categories available</div>';
@@ -383,7 +453,7 @@ function loadCategories() {
                         ${cat.name}
                     </div>
                 `).join('');
-                
+
                 // Add click event to filter posts by category
                 document.querySelectorAll('.category').forEach(categoryEl => {
                     categoryEl.addEventListener('click', () => {
@@ -395,7 +465,7 @@ function loadCategories() {
         })
         .catch(error => {
             console.error('Error loading categories:', error);
-            document.getElementById('categories-list').innerHTML = 
+            document.getElementById('categories-list').innerHTML =
                 `<div class="error">Failed to load categories: ${error.message}</div>`;
         });
 }
@@ -406,40 +476,40 @@ function loadPosts(categoryId = null) {
         handleInvalidToken();
         return;
     }
-    
+
     // Build URL with query parameter if categoryId is provided
     let url = '/api/posts';
     if (categoryId) {
         url += `?category=${categoryId}`;
     }
-    
+
     fetch(url, {
         headers: {
             'Authorization': `Bearer ${token}` // Include authentication token
         }
     })
-    .then(response => {
-        if (!response.ok) {
-            return response.text().then(text => {
-                try {
-                    const data = JSON.parse(text);
-                    throw new Error(data.message || `Error: ${response.status}`);
-                } catch (e) {
-                    throw new Error(`Failed to load posts: ${response.status}`);
-                }
-            });
-        }
-        return response.json();
-    })
-    .then(posts => {
-        const container = document.getElementById('posts-feed');
-        
-        if (!posts || posts.length === 0) {
-            container.innerHTML = '<p>No posts found. Be the first to create one!</p>';
-            return;
-        }
-        
-        container.innerHTML = posts.map(post => `
+        .then(response => {
+            if (!response.ok) {
+                return response.text().then(text => {
+                    try {
+                        const data = JSON.parse(text);
+                        throw new Error(data.message || `Error: ${response.status}`);
+                    } catch (e) {
+                        throw new Error(`Failed to load posts: ${response.status}`);
+                    }
+                });
+            }
+            return response.json();
+        })
+        .then(posts => {
+            const container = document.getElementById('posts-feed');
+
+            if (!posts || posts.length === 0) {
+                container.innerHTML = '<p>No posts found. Be the first to create one!</p>';
+                return;
+            }
+
+            container.innerHTML = posts.map(post => `
             <div class="post" data-id="${post.id || post.ID}">
                 <h3>${post.title}</h3>
                 <p>${post.content}</p>
@@ -465,50 +535,50 @@ function loadPosts(categoryId = null) {
             </div>
         `).join('');
 
-        // Add click event to comment buttons
-        document.querySelectorAll('.comment-btn').forEach(btn => {
-            btn.addEventListener('click', (event) => {
-                event.stopPropagation(); // Prevent post click event
-                const postId = btn.dataset.id;
-                toggleComments(postId);
+            // Add click event to comment buttons
+            document.querySelectorAll('.comment-btn').forEach(btn => {
+                btn.addEventListener('click', (event) => {
+                    event.stopPropagation(); // Prevent post click event
+                    const postId = btn.dataset.id;
+                    toggleComments(postId);
+                });
             });
-        });
-        
-        // Add submit event to comment forms
-        document.querySelectorAll('.add-comment-form').forEach(form => {
-            form.addEventListener('submit', (event) => {
-                event.preventDefault();
-                event.stopPropagation(); // Prevent post click event
-                const postId = form.dataset.postId;
-                const content = form.querySelector('.comment-content').value.trim();
-                addComment(postId, content, form);
+
+            // Add submit event to comment forms
+            document.querySelectorAll('.add-comment-form').forEach(form => {
+                form.addEventListener('submit', (event) => {
+                    event.preventDefault();
+                    event.stopPropagation(); // Prevent post click event
+                    const postId = form.dataset.postId;
+                    const content = form.querySelector('.comment-content').value.trim();
+                    addComment(postId, content, form);
+                });
             });
-        });
-        
-        // Add click event to posts for viewing details
-        document.querySelectorAll('.post').forEach(post => {
-            post.addEventListener('click', (event) => {
-                // Don't trigger if clicking on comment button or form
-                if (!event.target.closest('.comments-section') && 
-                    !event.target.closest('.comment-btn')) {
-                    const postId = post.dataset.id;
-                    viewPostDetails(postId);
-                }
+
+            // Add click event to posts for viewing details
+            document.querySelectorAll('.post').forEach(post => {
+                post.addEventListener('click', (event) => {
+                    // Don't trigger if clicking on comment button or form
+                    if (!event.target.closest('.comments-section') &&
+                        !event.target.closest('.comment-btn')) {
+                        const postId = post.dataset.id;
+                        viewPostDetails(postId);
+                    }
+                });
             });
+        })
+        .catch(error => {
+            if (error.message.includes('Unauthorized')) return;
+            console.error('Error loading posts:', error);
+            document.getElementById('posts-feed').innerHTML =
+                `<p class="error">Failed to load posts: ${error.message}</p>`;
         });
-    })
-    .catch(error => {
-        if (error.message.includes('Unauthorized')) return;
-        console.error('Error loading posts:', error);
-        document.getElementById('posts-feed').innerHTML = 
-            `<p class="error">Failed to load posts: ${error.message}</p>`;
-    });
 }
 
 // Function to toggle comments visibility and load them if needed
 function toggleComments(postId) {
     const commentsSection = document.getElementById(`comments-section-${postId}`);
-    
+
     if (commentsSection.style.display === 'none') {
         commentsSection.style.display = 'block';
         loadComments(postId);
@@ -532,25 +602,25 @@ function loadComments(postId) {
         handleInvalidToken();
         return;
     }
-    
+
     const commentsContainer = document.getElementById(`comments-container-${postId}`);
-    
+
     fetch(`/api/posts/${postId}/comments`, {
         headers: {
             'Authorization': `Bearer ${token}`
         }
     })
-    .then(response => {
-        if (!response.ok) throw new Error(`Failed to load comments: ${response.status}`);
-        return response.json();
-    })
-    .then(comments => {
-        if (!comments || comments.length === 0) {
-            commentsContainer.innerHTML = '<p>No comments yet. Be the first to comment!</p>';
-            return;
-        }
-        
-        commentsContainer.innerHTML = comments.map(comment => `
+        .then(response => {
+            if (!response.ok) throw new Error(`Failed to load comments: ${response.status}`);
+            return response.json();
+        })
+        .then(comments => {
+            if (!comments || comments.length === 0) {
+                commentsContainer.innerHTML = '<p>No comments yet. Be the first to comment!</p>';
+                return;
+            }
+
+            commentsContainer.innerHTML = comments.map(comment => `
             <div class="comment">
                 <div class="comment-content">${comment.content}</div>
                 <div class="comment-meta">
@@ -559,28 +629,28 @@ function loadComments(postId) {
                 </div>
             </div>
         `).join('');
-    })
-    .catch(error => {
-        if (error.message.includes('Unauthorized')) return;
-        console.error('Error loading comments:', error);
-        commentsContainer.innerHTML = `<p class="error">Failed to load comments: ${error.message}</p>`;
-    });
+        })
+        .catch(error => {
+            if (error.message.includes('Unauthorized')) return;
+            console.error('Error loading comments:', error);
+            commentsContainer.innerHTML = `<p class="error">Failed to load comments: ${error.message}</p>`;
+        });
 }
 
 // Function to add a new comment
 function addComment(postId, content, form) {
     const token = localStorage.getItem('forum_token');
-    
+
     if (!token) {
         handleInvalidToken();
         return;
     }
-    
+
     if (!content) {
         alert('Comment cannot be empty.');
         return;
     }
-    
+
     fetch(`/api/posts/${postId}/comments`, {
         method: 'POST',
         headers: {
@@ -589,26 +659,26 @@ function addComment(postId, content, form) {
         },
         body: JSON.stringify({ content })
     })
-    .then(response => {
-        if (!response.ok) throw new Error(`Failed to add comment: ${response.status}`);
-        return response.json();
-    })
-    .then(data => {
-        if (data.success) {
-            // Clear the comment form
-            form.querySelector('.comment-content').value = '';
-            
-            // Reload comments to show the new one
-            loadComments(postId);
-        } else {
-            alert(`Failed to add comment: ${data.message}`);
-        }
-    })
-    .catch(error => {
-        if (error.message.includes('Unauthorized')) return;
-        console.error('Error adding comment:', error);
-        alert('An error occurred while adding your comment. Please try again.');
-    });
+        .then(response => {
+            if (!response.ok) throw new Error(`Failed to add comment: ${response.status}`);
+            return response.json();
+        })
+        .then(data => {
+            if (data.success) {
+                // Clear the comment form
+                form.querySelector('.comment-content').value = '';
+
+                // Reload comments to show the new one
+                loadComments(postId);
+            } else {
+                alert(`Failed to add comment: ${data.message}`);
+            }
+        })
+        .catch(error => {
+            if (error.message.includes('Unauthorized')) return;
+            console.error('Error adding comment:', error);
+            alert('An error occurred while adding your comment. Please try again.');
+        });
 }
 
 // Helper function to format dates nicely
@@ -631,18 +701,18 @@ function loadOnlineUsers() {
         })
         .then(users => {
             const container = document.getElementById('users-list');
-            
+
             if (!users || !Array.isArray(users) || users.length === 0) {
                 container.innerHTML = '<div>No users online</div>';
                 return;
             }
-            
+
             // Separate online and offline users
             const onlineUsers = users.filter(u => u.online);
             const offlineUsers = users.filter(u => !u.online);
-            
+
             let html = '';
-            
+
             if (onlineUsers.length > 0) {
                 html += `
                     <div class="user-group">
@@ -651,7 +721,7 @@ function loadOnlineUsers() {
                     </div>
                 `;
             }
-            
+
             if (offlineUsers.length > 0) {
                 html += `
                     <div class="user-group">
@@ -660,13 +730,13 @@ function loadOnlineUsers() {
                     </div>
                 `;
             }
-            
+
             container.innerHTML = html;
             addChatIconListeners(); // Add listeners after users are loaded
         })
         .catch(error => {
             console.error('Error loading users:', error);
-            document.getElementById('users-list').innerHTML = 
+            document.getElementById('users-list').innerHTML =
                 `<div class="error">Failed to load users</div>`;
         });
 }
@@ -675,7 +745,7 @@ function createUserElement(user) {
     const lastSeen = user.lastSeen ? formatLastSeen(user.lastSeen) : '';
     const userId = localStorage.getItem('user_id'); // Get the current user's ID
     const isCurrentUser = (userId && parseInt(userId) === user.id); // Check if it's the current user
-    
+
     return `
         <div class="user ${user.online ? 'online' : 'offline'}" data-id="${user.id}" data-username="${user.nickname}">
             <div class="user-info">
@@ -694,7 +764,7 @@ function formatLastSeen(timestamp) {
     const now = new Date();
     const date = new Date(timestamp);
     const diffHours = Math.floor((now - date) / (1000 * 60 * 60));
-    
+
     if (diffHours < 1) {
         const diffMinutes = Math.floor((now - date) / (1000 * 60));
         return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
@@ -724,48 +794,48 @@ function updateOnlineStatus(online) {
 // Logout handler
 function handleLogout() {
     clearInterval(tokenCheckInterval);
-    const token = localStorage.getItem('forum_token'); 
-    
+    const token = localStorage.getItem('forum_token');
+
     if (!token) {
         console.log('No token found, already logged out');
         window.location.href = '/';
         return;
     }
-    
-    fetch('/api/logout', { 
+
+    fetch('/api/logout', {
         method: 'POST',
         headers: {
             'Authorization': `Bearer ${token}` // Include token in header
         }
     })
-    .then(response => {
-        // Handle non-JSON responses gracefully
-        if (response.ok) {
-            try {
-                return response.json();
-            } catch (e) {
-                return { success: true }; // Assume success if server returned 200 OK
+        .then(response => {
+            // Handle non-JSON responses gracefully
+            if (response.ok) {
+                try {
+                    return response.json();
+                } catch (e) {
+                    return { success: true }; // Assume success if server returned 200 OK
+                }
+            } else {
+                console.error('Logout request failed with status:', response.status);
+                return { success: false, message: 'Server returned error status: ' + response.status };
             }
-        } else {
-            console.error('Logout request failed with status:', response.status);
-            return { success: false, message: 'Server returned error status: ' + response.status };
-        }
-    })
-    .then(data => {
-        // Clear all user data regardless of server response
-        localStorage.removeItem('forum_token');
-        localStorage.removeItem('user_id');
-        localStorage.removeItem('username');
-        
-        console.log('Logout complete, redirecting to login page');
-        
-        // Force page reload to ensure clean application state
-        window.location.reload();
-    })
-    .catch(error => {
-        console.error('Error during logout:', error);
-        alert('Logout failed. Please try again or refresh the page.');
-    });
+        })
+        .then(data => {
+            // Clear all user data regardless of server response
+            localStorage.removeItem('forum_token');
+            localStorage.removeItem('user_id');
+            localStorage.removeItem('username');
+
+            console.log('Logout complete, redirecting to login page');
+
+            // Force page reload to ensure clean application state
+            window.location.reload();
+        })
+        .catch(error => {
+            console.error('Error during logout:', error);
+            alert('Logout failed. Please try again or refresh the page.');
+        });
 }
 
 // --- Chat Functionality (New) ---
@@ -792,95 +862,176 @@ function openChatWindow(recipientId, recipientUsername) {
     currentChatRecipientId = recipientId;
     currentChatRecipientUsername = recipientUsername;
     chatHeaderTitle.textContent = `Chat with ${recipientUsername}`;
-    chatMessagesContainer.innerHTML = '<p>Loading messages...</p>'; // Clear and show loading
+    chatMessagesContainer.innerHTML = '<p>Loading messages...</p>';
 
     chatWindow.style.display = 'block';
     loadChatMessages(recipientId);
+
+    // Clear any notification badge when opening chat
+    // (You might want to be more specific about which notifications to clear)
+    updateNotificationBadge(0);
 }
 
-function loadChatMessages(recipientId) {
-    const token = localStorage.getItem('forum_token');
-    if (!token) {
-        handleInvalidToken();
-        return;
-    }
+// Add this to your loadMainApplication function
+function enhanceMainApplication() {
+    // Request notification permission when app loads
+    requestNotificationPermission();
 
-    fetch(`/api/chat/messages?recipientId=${recipientId}`, {
-        headers: {
-            'Authorization': `Bearer ${token}`
+    // Add periodic WebSocket health check
+    setInterval(() => {
+        if (ws && ws.readyState !== WebSocket.OPEN) {
+            console.log('WebSocket not open, attempting to reconnect...');
+            connectWebSocket();
         }
-    })
-    .then(response => {
-        if (!response.ok) throw new Error(`Failed to load chat messages: ${response.status}`);
-        return response.json();
-    })
-    .then(messages => {
-        const chatMessagesContainer = document.getElementById('chat-messages');
-        chatMessagesContainer.innerHTML = ''; // Clear loading message
+    }, 30000); // Check every 30 seconds
+}
 
-        if (messages.length === 0) {
-            chatMessagesContainer.innerHTML = '<p>No messages yet. Start the conversation!</p>';
+
+function loadChatMessages(recipientId) {
+    try {
+        // Validate recipientId
+        if (!recipientId || isNaN(recipientId)) {
+            throw new Error('Invalid recipient ID');
+        }
+
+        // Check authentication
+        const token = localStorage.getItem('forum_token');
+        if (!token) {
+            handleInvalidToken();
             return;
         }
 
-        const currentUserId = parseInt(localStorage.getItem('user_id'));
-
-        messages.forEach(msg => {
-            const messageElement = document.createElement('div');
-            messageElement.classList.add('chat-message');
-            messageElement.classList.add(msg.sender_id === currentUserId ? 'sent' : 'received');
+        // Make the request
+        fetch(`/api/chat/messages?recipientId=${encodeURIComponent(recipientId)}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(async response => {
+            const text = await response.text();
             
-            messageElement.innerHTML = `
-                <div class="message-content">${msg.content}</div>
-                <div class="message-meta">
-                    <span class="message-sender">${msg.sender_username || 'Unknown'}</span>
-                    <span class="message-time">${formatChatTime(msg.created_at)}</span>
-                </div>
-            `;
-            chatMessagesContainer.appendChild(messageElement);
+            if (!response.ok) {
+                console.error('Error response:', text);
+                throw new Error(`Server error: ${response.status}`);
+            }
+
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Failed to parse JSON:', text);
+                throw new Error('Invalid server response');
+            }
+        })
+        .then(data => {
+            // Handle case where data is not an array
+            if (!Array.isArray(data)) {
+                if (data.messages) {
+                    data = data.messages; // Handle wrapped responses
+                } else {
+                    throw new Error('Unexpected response format');
+                }
+            }
+
+            const container = document.getElementById('chat-messages');
+            if (!container) return;
+
+            container.innerHTML = data.length === 0 
+                ? '<p>No messages yet. Start the conversation!</p>'
+                : '';
+
+            const currentUserId = parseInt(localStorage.getItem('user_id'));
+
+            data.forEach(msg => {
+                const normalized = {
+                    sender_id: msg.sender_id || msg.senderId,
+                    sender_username: msg.sender_username || msg.senderUsername,
+                    content: msg.content || msg.text,
+                    created_at: msg.created_at || msg.timestamp
+                };
+
+                const messageEl = document.createElement('div');
+                messageEl.className = `chat-message ${normalized.sender_id === currentUserId ? 'sent' : 'received'}`;
+                
+                messageEl.innerHTML = `
+                    <div class="message-content">${normalized.content}</div>
+                    <div class="message-meta">
+                        <span class="message-sender">${normalized.sender_username || 'Unknown'}</span>
+                        <span class="message-time">${formatChatTime(normalized.created_at)}</span>
+                    </div>
+                `;
+                
+                container.appendChild(messageEl);
+            });
+
+            container.scrollTop = container.scrollHeight;
+        })
+        .catch(error => {
+            console.error('Chat load error:', error);
+            const container = document.getElementById('chat-messages');
+            if (container) {
+                container.innerHTML = `
+                    <div class="chat-error">
+                        <p>Error loading messages: ${error.message}</p>
+                        <button class="retry-btn" onclick="loadChatMessages(${recipientId})">
+                            Retry
+                        </button>
+                    </div>
+                `;
+            }
         });
-        chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight; // Scroll to bottom
-    })
-    .catch(error => {
-        console.error('Error loading chat messages:', error);
-        document.getElementById('chat-messages').innerHTML = `<p class="error">Failed to load messages: ${error.message}</p>`;
-    });
+    } catch (error) {
+        console.error('Initialization error:', error);
+    }
 }
+
 
 function handleSendMessage(event) {
     event.preventDefault();
     const chatInput = document.getElementById('chat-input');
     const content = chatInput.value.trim();
 
-    if (!content || !currentChatRecipientId) {
-        return;
-    }
+    if (!content || !currentChatRecipientId) return;
 
-    const token = localStorage.getItem('forum_token');
-    if (!token) {
-        handleInvalidToken();
-        return;
-    }
+    const message = {
+        type: "chat",
+        content: content,
+        senderId: parseInt(localStorage.getItem('user_id')),
+        senderUsername: localStorage.getItem('username'), // Ensure username is included
+        recipientId: parseInt(currentChatRecipientId),
+        timestamp: new Date().toISOString() // Include timestamp
+    };
 
-    // Make sure the WebSocket is open
     if (ws && ws.readyState === WebSocket.OPEN) {
-        const messagePayload = {
-            recipientId: currentChatRecipientId,
-            content: content
-        };
-
         try {
-            ws.send(JSON.stringify(messagePayload));
-            chatInput.value = ''; // Clear input
+            ws.send(JSON.stringify(message));
+            // Optimistic update with complete data
+            appendChatMessage({
+                sender_id: message.senderId,
+                sender_username: message.senderUsername,
+                recipient_id: message.recipientId,
+                content: message.content,
+                created_at: message.timestamp
+            });
+            chatInput.value = '';
         } catch (err) {
-            console.error('WebSocket send error:', err);
-            alert('Failed to send message via WebSocket.');
+            console.error('Send error:', err);
         }
-    } else {
-        alert('WebSocket connection is not open. Try again later.');
     }
 }
 
+function scrollChatToBottom() {
+    const chatMessages = document.getElementById('chat-messages');
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function requestNotificationPermission() {
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission().then(permission => {
+            console.log('Notification permission:', permission);
+        });
+    }
+}
 
 function updateNotificationBadge(count) {
     const badge = document.querySelector('.notification-badge');
