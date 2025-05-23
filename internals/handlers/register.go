@@ -436,6 +436,12 @@ func (h *Handler) GetPosts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		posts, err = h.DB.GetPostsByCategory(categoryID)
+
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+
 	} else {
 		// Otherwise get all posts
 		posts, err = h.DB.GetAllPosts()
@@ -576,7 +582,7 @@ func (h *Handler) UpdateOnlineStatus(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
-//comments section handler
+// comments section handler
 
 // Improved AddComment handler
 func (h *Handler) AddComment(w http.ResponseWriter, r *http.Request, postIDStr string) {
@@ -716,4 +722,27 @@ func (h *Handler) GetComments(w http.ResponseWriter, r *http.Request, postIDStr 
 	// without a wrapper object like we use for other responses
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(comments)
+}
+
+func (h *Handler) ValidateToken(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	tokenString := r.Header.Get("Authorization")
+	if tokenString == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	tokenString = strings.TrimPrefix(tokenString, "Bearer ")
+
+	_, err := h.VerifyJWTToken(tokenString)
+	if err != nil {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"valid": true}`))
 }
