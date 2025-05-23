@@ -26,6 +26,11 @@ func main() {
 	// Serve static files
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
 
+	// WebSocket endpoint for online users
+	http.HandleFunc("/ws/online", handler.OnlineWebSocket)
+
+	http.HandleFunc("/ws/chat", handler.HandleChatWebSocket)
+
 	// API routes
 	http.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		apiRouter(w, r, handler)
@@ -80,6 +85,8 @@ func apiRouter(w http.ResponseWriter, r *http.Request, h *handlers.Handler) {
 		h.GetOnlineUsers(w, r)
 	case path == "/online-status" && method == http.MethodPost:
 		h.UpdateOnlineStatus(w, r)
+	case path == "/chat/ws" && method == http.MethodGet:
+		h.HandleChatWebSocket(w, r)
 	default:
 		http.NotFound(w, r)
 	}
